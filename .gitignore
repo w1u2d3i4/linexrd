@@ -41,4 +41,10 @@ paper/figures/cs_population.txt
 ## ============ misc ============
 .DS_Store
 .vscode/
+.claude/
 *.swp
+.nfs*
+texput.log
+paper/main.pdf
+paper/figs/*.png
+paper/figures/*.png

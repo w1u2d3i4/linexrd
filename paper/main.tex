@@ -14,8 +14,14 @@
 \usepackage[noend]{algpseudocode}
 \usepackage{algorithm}
 \usepackage{placeins}     % \FloatBarrier to keep figures near their references
-\usepackage[verbose,hypertexnames=false]{hyperref}
-\hypersetup{colorlinks=false,allbordercolors=blue,pdfborderstyle={/S/U/W 1}}
+\usepackage[verbose,hypertexnames=false,breaklinks=true]{hyperref}
+\hypersetup{
+  colorlinks=true,
+  urlcolor=blue!55!black,
+  linkcolor=blue!55!black,
+  citecolor=blue!55!black,
+  pdfborderstyle={}      % suppress underline rectangle that engulfs the line on URL wrap
+}
 % Note: ws-ijwmip.cls provides \toprule, \colrule, \botrule;
 % itemlist and romanlist environments; \tbl{caption}{tabular};
 % \alttext for figures.  We do NOT load booktabs or enumitem.
@@ -1527,9 +1533,8 @@ Sciences.
         and the RRUFF mineral diffraction database
         (\url{https://rruff.info/}).
   \item \textbf{Materials availability:} Not applicable.
-  \item \textbf{Code availability:} The source code will be made
-        available upon publication at
-        \url{https://github.com/baigeiguai/LineXRD}.
+  \item \textbf{Code availability:} The source code is available at
+        \url{https://github.com/w1u2d3i4/linexrd}.
   \item \textbf{Author contribution:} All authors contributed to the
         conception, design, implementation, analysis, and writing of
         this work. P.~Wang is the corresponding author.
@@ -1663,13 +1668,16 @@ under generic continuity of the trained filter spectra.
 \label{app:d}
 
 \label{app:g}
-The autoresearch pipeline configuration is shipped at
-\texttt{/opt/data/private/linexrd/autoresearch.\{md,sh\}}; full
-hyperparameters are committed alongside training logs in
-\texttt{linexrd/logs/}. Three random seeds per backbone-dataset cell.
-Single A100-40G; \texttt{train\_sec\_per\_epoch} measured in this
-environment. The training entry point is
-\texttt{python -m src.train\_linexrd}.
+The training entry point is the env-var-driven wrapper
+\texttt{train.sh} at the repository root, which forwards to
+\texttt{python -m src.train\_linexrd}; the canonical
+three-backbone matrix is reproduced by \texttt{bash run\_matrix.sh},
+and the downsample / cross-dataset ablations by
+\texttt{bash run\_ablations.sh}. Full hyperparameters and class
+weights are exposed as environment variables and recorded in the
+per-run logs under \texttt{linexrd/logs/}. Three random seeds per
+backbone-dataset cell. Single A100-40G;
+\texttt{train\_sec\_per\_epoch} measured in this environment.
 
 \label{app:repro}
 
