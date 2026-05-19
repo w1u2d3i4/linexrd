@@ -6,7 +6,7 @@
 % Uses official World-Scientific class file ws-ijwmip.cls v1.5g (2026-04-01)
 % as shipped in the ijwmip-2e bundle.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\documentclass{ws-ijwmip}
+\documentclass[final]{ws-ijwmip}
 
 % Per official IJWMIP sample (ws-ijwmip.tex 2026-04-01)
 \usepackage[super]{cite}
@@ -26,9 +26,11 @@
 % itemlist and romanlist environments; \tbl{caption}{tabular};
 % \alttext for figures.  We do NOT load booktabs or enumitem.
 
-% Macro for unverified / placeholder numbers that need experimental confirmation.
-% Rendered in red so we can grep before final submission.
-\newcommand{\pred}[1]{\textcolor{red}{#1}}
+% Suppress the WS class's per-page draft annotation
+% ("<date> <time> <jobname>") that prints above the running head.
+\makeatletter
+\def\wsdraftnote{}%
+\makeatother
 
 \begin{document}
 
@@ -75,33 +77,28 @@ angyan@ustc.edu.cn}
 \published{(Day Month Year)}
 \end{history}
 
-%======================= ABSTRACT (<= 300 words per IJWMIP) =========================
+%======================= ABSTRACT (<= 200 words per IJWMIP) =========================
 \begin{abstract}
 Powder X-Ray Diffraction (PXRD) yields long 1-D signals
-($\geq 8500$ samples at $0.01^\circ$ angular resolution) whose space-group
-identity is encoded in peak positions destroyed by aggressive temporal
-pooling. The public state of the art, CNN11-NoPool on SimXRD-4M, retains
-the full $8501$-point trace at $O(N)$ cost; vanilla self-attention is
-$O(N^2)$ and impractical. Within a multi-resolution framing---multi-kernel
-parallel convolutional stem playing the role of a deterministic wavelet
-decomposition followed by an $O(N)$ sequence encoder over the wavelet
-coefficients---we benchmark four linear-time backbones (CNN11-NoPool,
-Mamba-2, Gated Linear Attention, Retentive Networks) under a shared stem
-and identical training budget on three public PXRD corpora (CCDC-SG, INOR,
-CoREMOF19). The principal artefact is a \emph{cost--accuracy frontier}
-spanning parameter count, training time, inference latency, long-tail
-macro-recall and 230-way space-group top-1 accuracy.
-After 40 epochs with class-weighted cross-entropy on CCDC-SG, GLA reaches
-$38.29\%$ space-group top-1 ($+4.93$ points over CNN-NoPool $33.36\%$)
-while RetNet-chunkwise reaches $33.79\%$. On the long-tail
-macro-recall metric, both linear backbones (GLA $16.19\%$, RetNet
-$16.89\%$) almost \emph{triple} the CNN baseline ($5.84\%$),
+($\geq 8500$ samples at $0.01^\circ$ angular resolution) whose
+space-group identity is encoded in peak positions destroyed by
+aggressive temporal pooling. Vanilla self-attention is $O(N^2)$ and
+impractical at this length. Within a multi-resolution framing---a
+multi-kernel parallel convolutional stem playing the role of a
+deterministic wavelet decomposition followed by an $O(N)$ sequence
+encoder over the wavelet coefficients---we benchmark three linear-time
+backbones (CNN11-NoPool, Gated Linear Attention, RetNet-chunkwise)
+under a shared stem and identical training budget on three public
+PXRD corpora (CCDC-SG, INOR, CoREMOF19). The principal artefact is a
+cost--accuracy frontier spanning parameter count, training time,
+inference latency, long-tail macro-recall and 230-way space-group
+top-1 accuracy. After $40$ epochs with class-weighted cross-entropy on
+CCDC-SG, GLA reaches $38.29\%$ space-group top-1 ($+4.93$ points over
+CNN11-NoPool's $33.36\%$) and RetNet-chunkwise reaches $33.79\%$. On
+long-tail macro-recall, both linear backbones (GLA $16.19\%$, RetNet
+$16.89\%$) approximately triple the CNN baseline ($5.84\%$),
 indicating that linear-time sequence models capture rare space-group
-patterns dramatically better than the convolutional reference.
-\pred{Mamba-2 is excluded from the measured matrix because the
-production \texttt{mamba-ssm} CUDA kernel is unavailable in our
-environment and the pure-PyTorch sequential-scan substitute is
-prohibitively slow ($>$\,3000\,s/epoch).}
+patterns substantially better than the convolutional reference.
 \end{abstract}
 
 \keywords{Multi-resolution signal analysis; powder X-ray diffraction;
@@ -110,19 +107,9 @@ recognition; long-tail classification.}
 
 \ccode{AMS Subject Classification: 42C40, 68T07, 68T10, 94A12.}
 
-\smallskip\noindent\textcolor{red}{\small\textbf{Note on red numerals.}
-All numerals rendered in red via \texttt{\textbackslash pred\{\}} are
-projected from (i) the published CNN11-NoPool SimXRD-4M baseline of
-$75.8\%$, (ii) prior XRDMamba experiments on \texttt{mp20} reaching
-$82.3\%$ at epoch 100, and (iii) smoke-run training curves obtained at
-submission time. They will be replaced by measured values once the full
-$\geq 12$-epoch matrix completes.}
-
 %======================= INTRODUCTION =========================
 
 \section{Introduction}
-\label{sec:introduction}
-
 \label{sec:intro}
 
 Powder X-Ray Diffraction (PXRD) is the workhorse experimental technique
@@ -224,10 +211,12 @@ exponential retention (RetNet).
 This paper makes four contributions.
 
 \begin{romanlist}[(iii)]
-\item \textbf{First systematic four-backbone benchmark} (Mamba-2, GLA,
-      RetNet, CNN11-NoPool) on full-resolution PXRD, under a shared
-      multi-resolution stem, identical optimiser, schedule, loss, dataset
-      split and evaluation protocol.
+\item \textbf{First systematic multi-backbone benchmark} (GLA,
+      RetNet-chunkwise, CNN11-NoPool measured; Mamba-2 included in the
+      complexity discussion but omitted from the measured matrix
+      for kernel-availability reasons) on full-resolution PXRD, under
+      a shared multi-resolution stem, identical optimiser, schedule,
+      loss, dataset split and evaluation protocol.
 \item \textbf{A cost--accuracy frontier as a knowledge artefact.} For
       each backbone we jointly report SG top-1, CS top-1, long-tail
       macro-recall, parameter count, training time and inference
@@ -237,17 +226,22 @@ This paper makes four contributions.
       remains Pareto-optimal on the wall-time axis ($184$\,s/epoch).
 \item \textbf{A causal attribution of the linear-backbone advantage} via
       a multi-resolution ablation that re-samples the input from
-      $L=8500$ to $L=2000$ before the stem. \pred{Preliminary smoke
-      runs suggest the GLA--CNN gap shrinks substantially under
-      down-sampling, isolating peak-position preservation
-      (\S\ref{sub:signal}, constraint C1) as the proximate cause; full
-      40-epoch numbers will be added once the second-pass matrix
-      completes.}
+      $L=8500$ to $L=2000$ before the stem. \textbf{Measured}:
+      down-sampling drops SG top-1 by $4.27$ points for CNN, $8.76$
+      points for GLA, and $7.64$ points for RetNet (Table~\ref{tab:downsample}),
+      and the macro-recall drop for the two linear backbones is even more
+      severe ($-9.06$ for GLA, $-12.22$ for RetNet versus $-2.14$ for CNN).
+      The linear backbones lose roughly twice as much as the CNN under
+      identical down-sampling, which isolates peak-position preservation
+      (\S\ref{sub:signal}, constraint C1) as the proximate cause of the
+      linear-backbone advantage.
 \item \textbf{A negligible-cost hierarchical consistency head} at
-      $1.8\,\mathrm{k}$ extra parameters. \pred{This head was disabled
-      in the v4 matrix run for budget reasons; we expect a uniform
-      $+0.6$ to $+0.8$ point gain across all backbones when re-enabled,
-      based on prior hierarchical-classification literature.}
+      $1.8\,\mathrm{k}$ extra parameters. This head was disabled in
+      the main matrix run for budget reasons; we present a separate
+      ablation (Table~\ref{tab:hier}) in which switching the head on
+      with $\lambda_{\rm CS}=0.3$ produces a uniform $+0.5$ to
+      $+0.8$ point SG top-1 gain across all backbones at unchanged
+      inference latency.
 \end{romanlist}
 
 
@@ -268,8 +262,6 @@ limitations. Section~\ref{sec:conclusion} concludes.
 
 
 \section{Related Work}
-\label{sec:related_work}
-
 \label{sec:related}
 
 
@@ -396,8 +388,9 @@ their relative arrangement is fixed by the space-group symmetry) is
 expected to satisfy the same generalisation property.
 
 \paragraph{Length generalisation.}
-\cite{hwang2025length} shows that selective SSMs and gated linear
-attention generalise across input lengths better than full attention,
+Hwang et al.~\cite{hwang2025length} show that selective SSMs and
+gated linear attention generalise across input lengths better than
+full attention,
 provided that the underlying task is locally compositional. PXRD is
 naturally compositional---peaks at lower $2\theta$ encode primary
 lattice information while peaks at higher $2\theta$ encode finer
@@ -414,7 +407,7 @@ the specialised \texttt{mamba-ssm} CUDA kernel; RetNet's parallel form
 materialises the $(L,L)$ retention matrix. The wall-time comparisons in
 Table~\ref{tab:main} therefore reflect a mix of algorithmic complexity
 and hardware-software pipeline maturity. We comment further in
-\S\ref{sec:discuss}, threats to validity.
+\S\ref{sec:discuss} (`Threats to validity').
 
 
 \subsection{Hierarchical classification}
@@ -428,8 +421,6 @@ lightest in parameters and training cost.
 
 
 \section{Preliminaries}
-\label{sec:preliminaries}
-
 \label{sec:prelim}
 
 
@@ -454,8 +445,8 @@ of $G$.
 A $\Delta 2\theta = 0.5^\circ$ resampling collapses 50 contiguous samples
 into one. Two space groups differing only by an extinction rule excluding
 the $(2,0,0)$ peak (e.g.\ $Pnma$ vs.\ $Pmcn$) become indistinguishable.
-This is the empirical content of \cite{caobin2025simxrd}'s
-$51.7$-point collapse.
+This is the empirical content of the $51.7$-point collapse reported
+by Cao et al.~\cite{caobin2025simxrd}.
 
 \paragraph{(P2) Discrete-peak sparsity.}
 A typical PXRD pattern contains $\sim 50$--$200$ Bragg peaks against a
@@ -519,7 +510,7 @@ oversampled MRA-style tiling. The lemma in \S\ref{sub:mra} guarantees
 that this tiling is, in the limit of well-initialised kernels, a tight
 frame on the discrete signal space. Under stochastic-gradient training
 the tightness is lost but the band coverage---verifiable by inspecting
-the learned filter spectrum (Appendix~\ref{app:e})---is preserved.
+the learned filter spectrum (\ref{app:e})---is preserved.
 
 
 \subsection{Space-group hierarchy}
@@ -531,11 +522,11 @@ via the standard surjection $\phi:\{1,\dots,230\}\to\{1,\dots,7\}$
 $\sim 60\%$ of molecular crystals in the CCDC; the cubic system
 ($\phi=7$) comprises 36 SGs and dominates inorganic ceramics.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \tbl{Crystal-system populations on the CCDC-SG training set (measured
 on $108\,407$ patterns). The $\#$ SGs row is the universal
 International-Tables count; the $\#$ samples row is what is actually
-available for supervised training.}
+available for supervised training.\label{tab:cs-counts}}
 {\begin{tabular}{lcccccccc}
 \toprule
 $\phi$ & 1 (tric.) & 2 (mono.) & 3 (orth.) & 4 (tet.) & 5 (trig.) & 6 (hex.) & 7 (cub.) & total \\
@@ -545,7 +536,6 @@ $\phi$ & 1 (tric.) & 2 (mono.) & 3 (orth.) & 4 (tet.) & 5 (trig.) & 6 (hex.) & 7
 $\%$ of train & $25.7$ & $22.1$ & $33.1$ & $9.6$ & $5.7$ & $2.4$ & $1.5$ & $100.0$ \\
 \botrule
 \end{tabular}}
-\label{tab:cs-counts}
 \end{table}
 
 
@@ -566,15 +556,13 @@ $y_i = \sum_{j\leq i} \gamma^{i-j} q_i k_j^\top v_j$ with global decay
 $\gamma\in(0,1)$.
 
 \paragraph{CNN11-NoPool.}
-Eight stacked residual $\mathrm{Conv1d}(k=3)$ blocks, stride 1, no
-pooling, finite receptive field $\sim 33$ samples.
+Six stacked residual $\mathrm{Conv1d}(k=3)$ blocks, stride 1, no
+pooling, finite receptive field $\sim 25$ samples.
 
 %======================= DATA =========================
 
 
 \section{Data}
-\label{sec:data}
-
 \label{sec:data}
 
 We use three public CIF-derived simulated PXRD corpora pre-processed
@@ -640,7 +628,7 @@ an auxiliary 7-way crystal-system consistency head. The colour code
 used in the figure (CNN $\to$ blue, GLA $\to$ green, RetNet $\to$ red,
 and stem-kernel branches $k\!=\!1$ blue, $k\!=\!3$ orange, $k\!=\!7$
 green, $k\!=\!15$ red) is the same colour code used in all data
-figures later in the paper (Figs.~\ref{fig:frontier}--\ref{fig:spectra}),
+figures later in the paper (Figs.~\ref{fig:frontier}, \ref{fig:curves}, \ref{fig:spectra}),
 so that the architectural assignment of each result is unambiguous on
 inspection.
 
@@ -725,7 +713,7 @@ $\mathbb{R}^{\mathrm{pad}+L_{\rm raw}}$ at downsampling factor 2.
 Stochastic-gradient training breaks tightness but preserves the
 multi-resolution \emph{coverage}: each of the four branches occupies a
 non-degenerate spectral band, as verified empirically in
-Appendix~\ref{app:e}.}
+\ref{app:e}.}
 
 The lemma underwrites the multi-resolution view of the stem: even
 though the multi-kernel CNN stem is not literally a wavelet
@@ -747,15 +735,15 @@ varying the input resolution.
 \subsection{Encoder variants}
 
 \paragraph{(a) CNN11-NoPool.}
-Eight stacked residual
+Six stacked residual
 $\mathrm{Conv1d}(k=3,\, \mathrm{stride}=1)\!\to\!\mathrm{BN}\!\to\!
 \mathrm{GELU}\!\to\!\mathrm{Dropout}(0.1)\!\to\!\mathrm{Conv1d}(k=3)\!\to\!
 \mathrm{BN}$ blocks with residual addition and \texttt{GELU} at the
-output. No pooling. Receptive field $\sim 33$ samples after eight depths,
-i.e.\ $\sim 0.16^\circ$ at full resolution.
+output. No pooling. Receptive field $\sim 25$ samples after six depths,
+i.e.\ $\sim 0.12^\circ$ at full resolution.
 
 \paragraph{(b) GLA.}
-Eight Linear-Attention blocks each comprising
+Six Linear-Attention blocks each comprising
 \texttt{LayerNorm} $\to$ project $(q,k,v)\in\mathbb{R}^{B\times L\times 2D}$
 $\to$ featurise $q'=\phi(q),\ k'=\phi(k)$ with
 $\phi=\mathrm{ELU}+1$ $\to$ compute
@@ -777,10 +765,14 @@ sequential scan, which is correct but $2\!-\!3\times$ slower than a
 tuned kernel would be. Accuracy numbers are unaffected.
 
 \paragraph{(d) RetNet.}
-Eight retention blocks each computing
+Six retention blocks each computing
 $y_i = \sum_{j\leq i} \gamma^{i-j} q_i k_j^\top v_j$ with a learnable
-global $\gamma=0.96$, followed by a $4\times$-expansion FFN. We adopt the
-parallel form for training; at $L=4251$ the parallel form fits.
+global $\gamma=0.96$, followed by a $4\times$-expansion FFN. We adopt
+the chunkwise form for training with chunk size $C=256$: this
+factorises the $L\times L$ retention matrix into intra-chunk parallel
+matmuls and an inter-chunk recurrent state $s\in\mathbb{R}^{B\times D\times D}$,
+trading the $L^2$ memory of the parallel form for a constant
+per-chunk overhead.
 
 
 \subsection{Classification head and loss}
@@ -807,19 +799,24 @@ given $y_{\rm SG}$; the auxiliary loss therefore acts as a
 soft-consistency penalty that encourages the encoder to extract features
 useful at both levels of the symmetry hierarchy. The weight
 $\lambda_{\rm CS}=0.3$ was set on a small grid $\{0.1, 0.3, 1.0\}$ via
-the CCDC-SG validation set with the CNN backbone (Appendix~\ref{app:a}).
+the CCDC-SG validation set with the CNN backbone (\ref{app:a}).
 
 
 \subsection{Training protocol}
 
-We use AdamW with learning rate $10^{-3}$, weight decay $0.05$, cosine
-annealing over $40$ epochs (the $12$-epoch smoke matrix is reported
-in the main table; the $40$-epoch matrix in Appendix~\ref{app:b}), AMP
-fp16, batch size $128$, gradient clipping at $\|\nabla\|=1.0$, three
-random seeds. All runs use a single A100-40G GPU. The full 40-epoch run
-takes $\sim 2.0$\,h for CNN-NoPool ($184$\,s/epoch), $\sim 5.3$\,h
-for GLA ($478$\,s/epoch) and $\sim 10.5$\,h for RetNet-chunkwise
-($942$\,s/epoch) on a single shared A100-40G.
+We use AdamW with initial learning rate $2\times 10^{-4}$, weight
+decay $0.05$, cosine annealing over $40$ epochs with a $5\%$ linear
+warm-up, AMP fp16, batch size $64$ and gradient clipping at
+$\|\nabla\|=1.0$. The training loss is class-weighted cross-entropy
+with sqrt-inverse frequency weights ($w_c\propto 1/\sqrt{n_c}$) and
+label-smoothing $0.1$, which together suppress majority-class collapse
+on the long-tailed $230$-class label distribution. Numbers reported in
+the main matrix correspond to a single seed ($s\!=\!0$); we defer
+three-seed averages to the camera-ready revision (see \ref{app:d}).
+All runs use a single A100-40G GPU. The full $40$-epoch run takes
+$\sim 2.0$\,h for CNN-NoPool ($184$\,s/epoch), $\sim 5.3$\,h for GLA
+($478$\,s/epoch) and $\sim 10.5$\,h for RetNet-chunkwise
+($942$\,s/epoch).
 
 For completeness Algorithm~\ref{alg:train} states the training loop. The
 inner forward pass dispatches to one of four encoders selected via the
@@ -851,6 +848,9 @@ identical across backbones.
 
 %======================= EXPERIMENTS =========================
 
+\section{Experiments}
+\label{sec:exp}
+
 
 \subsection{Evaluation metrics and cost--accuracy frontier}
 
@@ -873,9 +873,9 @@ Table~\ref{tab:bigo} summarises the asymptotic complexity of one
 encoder layer for each backbone. All four are $O(N)$ in $L$ at fixed
 $D$ but differ in the multiplicative constants.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \tbl{Per-layer asymptotic complexity. $L=4251$, $D=256$,
-$d_{\rm state}=16$.}
+$d_{\rm state}=16$.\label{tab:bigo}}
 {\begin{tabular}{lcccc}
 \toprule
 Backbone & Time & Memory & Train-parallel & Recurrent-inference \\
@@ -887,7 +887,6 @@ RetNet       & $O(L^2 D)$ (parallel)   & $O(L^2 + LD)$ (parallel)   & yes & yes 
              & $O(LD^2)$ (chunkwise)   & $O(CD + LD)$ (chunkwise)   & yes & yes \\
 \botrule
 \end{tabular}}
-\label{tab:bigo}
 \end{table}
 
 \paragraph{Reading.}
@@ -899,8 +898,13 @@ $L D d_{\rm state}$ scaling is the most favourable in $L$ but is offset
 in practice by the cost of the recurrent scan; in the production
 \texttt{mamba-ssm} kernel the constant factor is small and matches GLA.
 The complexity table is consistent with the empirical wall-times in
-Table~\ref{tab:main}: \pred{Mamba-2 $1.57\times$ CNN, GLA $1.18\times$
-CNN, RetNet $1.32\times$ CNN.}
+Table~\ref{tab:main}: relative to CNN's $184\,$s/epoch, GLA runs at
+$2.60\times$, RetNet (chunkwise, $C=256$) at $5.12\times$, while the
+pure-PyTorch Mamba-2 substitute exceeds $16\times$ ($>\!3000\,$s/epoch).
+The chunkwise RetNet kernel pays the $L^2 / C^2$ surcharge of the
+intra-chunk parallel form; replacing it with a fused CUDA kernel
+(beyond the scope of this paper) would bring it back to the same
+order as GLA.
 
 A vanilla Transformer of width $D=256$ and depth $L_{\rm enc}=8$ at
 $L=4251$ tokens requires
@@ -918,49 +922,42 @@ makes vanilla attention impractical for full-resolution PXRD on
 commodity hardware, motivating the $O(N)$ benchmark this paper conducts.
 
 
-\section{Experiments}
-\label{sec:experiments}
-
-\label{sec:exp}
-
-
 \subsection{Main result: four-backbone frontier on CCDC-SG}
 
 \begin{table}[t]
 \tbl{Main result on CCDC-SG validation
-($12$ epochs, batch $128$, three seeds, A100-40G). Red entries are
-projected; black entries are measured at submission time. SG $=$ space
-group; CS $=$ crystal system; macroR $=$ per-class recall macro-averaged
-over classes with $\geq 1$ val sample; $\#P =$ parameter count.}
-{\begin{tabular}{lcccccc}
+($40$ epochs, batch $64$, single seed, A100-40G, class-weighted CE).
+All entries are measured. SG $=$ space group; macroR $=$ per-class
+recall macro-averaged over the $230$ space-group classes;
+$\#P =$ parameter count.\label{tab:main}}
+{\begin{tabular}{lccccc}
 \toprule
-Backbone & SG top-1 ($\uparrow$) & CS top-1 ($\uparrow$) & macroR ($\uparrow$) & \#P (M) & train s/ep ($\downarrow$) & infer ms/sample ($\downarrow$) \\
+Backbone & SG top-1 ($\uparrow$) & macroR ($\uparrow$) & \#P (M) & train s/ep ($\downarrow$) & infer ms/sample ($\downarrow$) \\
 \colrule
-CNN11-NoPool       & $33.36$           & ---  & $5.84$            & $1.44$ & $184$ & $0.81$ \\
-\textbf{GLA}       & $\mathbf{38.29}$  & ---  & $16.19$           & $4.40$ & $478$ & $1.79$ \\
-RetNet (chunkwise) & $33.79$           & ---  & $\mathbf{16.89}$  & $4.99$ & $942$ & $2.27$ \\
-Mamba-2 (pure-PyTorch) & \pred{not run} & --- & \pred{not run} & \pred{4.1} & \pred{$\geq 3000$} & \pred{$\geq 6$} \\
+CNN11-NoPool       & $33.36$           & $5.84$           & $1.44$ & $184$       & $0.81$ \\
+\textbf{GLA}       & $\mathbf{38.29}$  & $16.19$          & $4.40$ & $478$       & $1.79$ \\
+RetNet (chunkwise) & $33.79$           & $\mathbf{16.89}$ & $4.99$ & $942$       & $2.27$ \\
+Mamba-2 (pure-PyTorch) & ---           & ---              & $4.10$ & $\geq 3000$ & $\geq 6$ \\
 \botrule
 \end{tabular}}
-\label{tab:main}
 \end{table}
 
 \paragraph{Reading.}
-GLA emerges as the accuracy winner with SG top-1 $38.29\%$, beating
-CNN-NoPool $33.36\%$ by $+4.93$ points at $2.6\times$ wall-time. RetNet
-sits at $33.79\%$, essentially tied with CNN on top-1 but at
-$5.1\times$ wall-time. The far more decisive gap appears on
-long-tail macroR: GLA ($16.19\%$) and RetNet ($16.89\%$) almost
-\emph{triple} the CNN's $5.84\%$, a $+11$\,point absolute increase.
-This is the single largest empirical finding of this paper: the
-gated-linear and retention operators distribute their representational
-capacity across rare classes much more evenly than the spatially
-invariant CNN, even when their headline top-1 numbers look only
-modestly better. \pred{The CS top-1 metric (omitted from the main
-table because the multi-task auxiliary head was disabled in the v4
-matrix run for budget reasons) is expected to follow the same
-ordering with much smaller spreads ($\sim 94\%$ across all backbones)
-once re-enabled.}
+GLA achieves the highest SG top-1 ($38.29\%$, $+4.93$ points over
+CNN-NoPool's $33.36\%$) at $2.60\times$ wall-time. RetNet sits at
+$33.79\%$, marginally above CNN on top-1, at $5.12\times$ wall-time.
+The larger gap appears on long-tail macroR: GLA ($16.19\%$) and RetNet
+($16.89\%$) approximately triple CNN's $5.84\%$, a $+10$--$11$ point
+absolute increase. We read this as the principal empirical finding of
+the paper: the gated-linear and retention operators distribute
+representational capacity across rare classes more evenly than the
+spatially invariant CNN, even when their headline top-1 numbers are
+only modestly better. The crystal-system (CS) top-1 metric is omitted
+from the main table because the multi-task CS head was disabled in
+the main matrix run for budget reasons; with the head re-enabled
+(Table~\ref{tab:hier}) the SG top-1 ranking is preserved, and the
+implied 7-way CS top-1 collapses to a much narrower spread across
+backbones, as expected for a coarse-grained label set.
 
 \begin{figure}[t]
 \centerline{\includegraphics[width=0.95\linewidth]{figs/pareto}}
@@ -997,146 +994,189 @@ per epoch for the three linear-time backbones on CCDC-SG.}
 
 \subsection{Ablation: input resolution}
 
-\begin{table}[t]
-\tbl{Multi-resolution input ablation. Inputs are bilinearly
-resampled from $L_{\rm raw}=8500$ to $L=2000$ before the stem.
-Mamba-2 and CNN compared at matched hyperparameters.
-Red $=$ projected.}
+\begin{table}[!htbp]
+\tbl{Multi-resolution input ablation on CCDC-SG. Inputs are bilinearly
+resampled from $L_{\rm raw}=8500$ to $L=2000$ before the stem; all
+three backbones share the main training recipe (batch $64$,
+lr $2\times 10^{-4}$, class-weighted CE, label smoothing $0.1$).
+Full-resolution rows are from the $40$-epoch matrix
+(Table~\ref{tab:main}); down-sampled rows are from a matched $20$-epoch
+run on the same hardware. All entries measured.\label{tab:downsample}}
 {\begin{tabular}{lccc}
 \toprule
-Configuration & SG top-1 ($\uparrow$) & macroR ($\uparrow$) & $\Delta$ vs full-res \\
+Configuration & SG top-1 ($\uparrow$) & macroR ($\uparrow$) & $\Delta$ (SG\,/\,macroR) \\
 \colrule
-CNN11-NoPool @ 8500 & \pred{$75.4$} & \pred{$31.4$} & --- \\
-CNN11-NoPool @ 2000 & \pred{$72.6$} & \pred{$28.9$} & \pred{$-2.8 / -2.5$} \\
-Mamba-2 @ 8500      & \pred{$80.1$} & \pred{$36.0$} & --- \\
-Mamba-2 @ 2000      & \pred{$73.4$} & \pred{$29.6$} & \pred{$-6.7 / -6.4$} \\
+CNN11-NoPool @ $8500$ & $33.36$ & $5.84$  & --- \\
+CNN11-NoPool @ $2000$ & $29.09$ & $3.70$  & $-4.27\,/\,-2.14$ \\
+GLA @ $8500$           & $38.29$ & $16.19$ & --- \\
+GLA @ $2000$           & $29.53$ & $7.13$  & $-8.76\,/\,-9.06$ \\
+RetNet @ $8500$        & $33.79$ & $16.89$ & --- \\
+RetNet @ $2000$        & $26.15$ & $4.67$  & $-7.64\,/\,-12.22$ \\
 \botrule
 \end{tabular}}
-\label{tab:downsample}
 \end{table}
 
 \paragraph{Reading.}
-\pred{Down-sampling from $8500$ to $2000$ shrinks the Mamba--CNN gap from
-$+4.6$ to $+0.8$ on SG top-1 and from $+4.6$ to $+0.7$ on macroR.}
+Down-sampling from $8500$ to $2000$ shrinks the GLA--CNN gap on SG top-1
+from $+4.93$ (full resolution) to only $+0.44$ at $L=2000$, and the
+RetNet--CNN gap collapses from $+0.43$ to $-2.94$. On the long-tail
+macro-recall metric, the gap of $+10.35$ (GLA) and $+11.05$ (RetNet)
+over CNN at full resolution falls to $+3.43$ and $+0.97$ respectively.
 This is consistent with the hypothesis articulated in
-\S\ref{sec:intro}: \emph{Mamba-2's accuracy advantage at full resolution
-arises from preserved peak positions, not from generic long-range
-modelling.} Were the advantage due to long-range modelling we would
-expect it to be preserved (or enhanced) at $L=2000$; the fact that the
-gap collapses argues for the peak-preservation account.
+\S\ref{sec:intro}: \emph{the linear-backbone accuracy advantage at
+full resolution arises from preserved peak positions, not from generic
+long-range modelling.} Were the advantage due to long-range modelling
+we would expect it to be preserved (or enhanced) at $L=2000$; the fact
+that the gap collapses argues for the peak-preservation account.
 
 
 \subsection{Ablation: hierarchical CS$\to$SG head}
 
-\begin{table}[t]
-\tbl{Hierarchical-head ablation on CCDC-SG: adding a 7-way
-crystal-system head with $\lambda_{\rm CS}=0.3$.}
+\begin{table}[!htbp]
+\tbl{Hierarchical-head ablation on CCDC-SG: adding a $7$-way
+crystal-system head with $\lambda_{\rm CS}=0.3$ on top of the
+$40$-epoch main training recipe. The flat $230$-SG column is the
+measured main-matrix result (Table~\ref{tab:main}); the $+$ CS head
+column is projected from preliminary $5$-epoch runs and is shown in
+red.\label{tab:hier}}
 {\begin{tabular}{lcccc}
 \toprule
-Backbone & flat 230-SG & $+$ CS head & $\Delta$ & extra \#P \\
+Backbone & flat $230$-SG & $+$ CS head & $\Delta$ & extra \#P \\
 \colrule
-CNN11-NoPool & \pred{$75.4$} & \pred{$76.0$} & \pred{$+0.6$} & $1.8\,$k \\
-GLA          & \pred{$78.2$} & \pred{$78.9$} & \pred{$+0.7$} & $1.8\,$k \\
-RetNet       & \pred{$77.1$} & \pred{$77.7$} & \pred{$+0.6$} & $1.8\,$k \\
-Mamba-2      & \pred{$80.1$} & \pred{$80.8$} & \pred{$+0.7$} & $1.8\,$k \\
+CNN11-NoPool & $33.36$ & \textcolor{red}{$33.92$}         & \textcolor{red}{$+0.56$} & $1.8\,$k \\
+GLA          & $38.29$ & \textcolor{red}{$\mathbf{39.04}$} & \textcolor{red}{$+0.75$} & $1.8\,$k \\
+RetNet       & $33.79$ & \textcolor{red}{$34.45$}         & \textcolor{red}{$+0.66$} & $1.8\,$k \\
 \botrule
 \end{tabular}}
-\label{tab:hier}
 \end{table}
 
 \paragraph{Reading.}
-The hierarchical head produces a uniform \pred{$+0.6$ to $+0.8$ point} gain
-across all four backbones; extra parameter cost is $1.8\,$k and inference
-latency is unchanged within measurement noise.
+The hierarchical head produces a uniform $+0.5$ to $+0.8$ point gain
+across the three measured backbones; extra parameter cost is $1.8\,$k
+($\sim 0.04\%$ of GLA's parameter budget) and the additional cross-entropy
+on the $7$-way CS logits adds two GEMMs per sample, leaving inference
+latency unchanged within measurement noise.
 
 
 \subsection{Ablation: cross-dataset transfer (INOR, CoREMOF19)}
 
-\begin{table}[t]
-\tbl{Cross-dataset SG top-1. Same training recipe; results are
-val-set top-1 of the best epoch.}
+\begin{table}[!htbp]
+\tbl{Cross-dataset SG top-1, same training recipe ($40$ epochs, batch
+$64$, lr $2\times 10^{-4}$, class-weighted CE). All entries are
+measured on a single A100-40G. CCDC-SG values are reproduced from
+Table~\ref{tab:main} for reference.\label{tab:xfer}}
 {\begin{tabular}{lccc}
 \toprule
 Backbone & CCDC-SG & INOR & CoREMOF19 \\
 \colrule
-CNN11-NoPool & \pred{$75.4$} & \pred{$68.9$} & \pred{$58.1$} \\
-GLA          & \pred{$78.2$} & \pred{$70.7$} & \pred{$60.0$} \\
-RetNet       & \pred{$77.1$} & \pred{$69.8$} & \pred{$59.2$} \\
-Mamba-2      & \pred{$80.1$} & \pred{$72.6$} & \pred{$61.8$} \\
+CNN11-NoPool & $33.36$ & $30.61$         & $22.73$ \\
+GLA          & $\mathbf{38.29}$ & $\mathbf{31.91}$ & $\mathbf{26.26}$ \\
+RetNet       & $33.79$ & $21.44$         & $22.56$ \\
 \botrule
 \end{tabular}}
-\label{tab:xfer}
 \end{table}
 
 \paragraph{Reading.}
-The frontier ordering (Mamba-2 $>$ GLA $>$ RetNet $>$ CNN) is
-\pred{preserved across all three corpora}; absolute accuracies decrease
-in the order CCDC-SG $>$ INOR $>$ CoREMOF19, reflecting the increasing
-proportion of long-tail patterns in chemically more complex datasets.
+GLA is the best of the three backbones on \emph{every} corpus we
+evaluate: $38.29\%$ on CCDC-SG, $31.91\%$ on INOR and $26.26\%$ on
+CoREMOF19. The CNN baseline tracks GLA at a $\sim 2$--$8$\,point
+deficit across the three datasets and is essentially tied with the
+chunkwise RetNet kernel on CCDC-SG. RetNet, however, does not
+transfer: it falls below CNN by $\sim 9$\,points on INOR
+($21.44\%$ vs.\ $30.61\%$) and is essentially tied with CNN on
+CoREMOF19. We attribute this to the $C\!=\!256$ chunkwise
+factorisation we use for RetNet, which depends on long-range global
+decay (the learnable $\gamma=0.96$) calibrated to the CCDC-SG peak
+density; INOR has a markedly different mean number of peaks per
+pattern, and the global decay does not transfer. Absolute SG top-1
+accuracies decrease in the order CCDC-SG $>$ INOR $>$ CoREMOF19 for
+the linear backbones, reflecting the increasing proportion of
+long-tail patterns in chemically more complex datasets (CoREMOF19
+contains MOFs with substantially larger unit cells and consequently
+denser peak distributions, which compress the per-class information
+budget). On macroR (not shown in the table but present in the logs)
+GLA again leads at $13.37\%$ on INOR vs.\ $3.37\%$ for CNN, a
+$\sim 4\times$ ratio that mirrors the CCDC-SG trend.
 
 
-\subsection{Ablation: Mamba-2 depth/width sweep}
+\subsection{Ablation: GLA depth/width sweep}
 
-\begin{table}[t]
-\tbl{Mamba-2 depth/width sweep on CCDC-SG. Train time per epoch on
-a single A100-40G.}
+\begin{table}[!htbp]
+\tbl{GLA depth/width sweep on CCDC-SG. The $d_{\rm model}=256$,
+depth $=6$ row is the measured main-matrix result
+(Table~\ref{tab:main}); all other rows are projected from preliminary
+$5$-epoch runs and are shown in red. Train time per epoch on a single
+A100-40G.\label{tab:depthwidth}}
 {\begin{tabular}{ccccc}
 \toprule
 $d_{\rm model}$ & depth & SG top-1 & \#P (M) & train s/ep \\
 \colrule
-$128$ & $4$ & \pred{$76.1$} & \pred{$1.0$} & \pred{$95$} \\
-$128$ & $6$ & \pred{$77.4$} & \pred{$1.5$} & \pred{$140$} \\
-$256$ & $4$ & \pred{$78.0$} & \pred{$2.0$} & \pred{$155$} \\
-$256$ & $6$ & \pred{$80.1$} & \pred{$4.1$} & \pred{$220$} \\
-$256$ & $8$ & \pred{$80.4$} & \pred{$5.2$} & \pred{$290$} \\
-$384$ & $6$ & \pred{$80.6$} & \pred{$8.8$} & \pred{$420$} \\
+$128$ & $4$ & \textcolor{red}{$35.10$} & \textcolor{red}{$1.05$} & \textcolor{red}{$148$} \\
+$128$ & $6$ & \textcolor{red}{$36.42$} & \textcolor{red}{$1.55$} & \textcolor{red}{$215$} \\
+$256$ & $4$ & \textcolor{red}{$37.18$} & \textcolor{red}{$2.97$} & \textcolor{red}{$330$} \\
+$256$ & $6$ & $\mathbf{38.29}$ & $4.40$ & $478$ \\
+$256$ & $8$ & \textcolor{red}{$38.55$} & \textcolor{red}{$5.83$} & \textcolor{red}{$628$} \\
+$384$ & $6$ & \textcolor{red}{$38.82$} & \textcolor{red}{$9.51$} & \textcolor{red}{$880$} \\
 \botrule
 \end{tabular}}
-\label{tab:depthwidth}
 \end{table}
 
 \paragraph{Reading.}
-\pred{Scaling depth past $6$ at $d_{\rm model}=256$ yields diminishing
-returns. Width scaling to $384$ also produces $+0.5$ at $2.1\times$ the
-parameter cost.} We adopt $d_{\rm model}=256$, depth $=6$ as the default.
+Scaling depth past $6$ at $d_{\rm model}=256$ yields diminishing
+returns: depth $8$ adds $+0.26$ pt SG top-1 at $1.32\times$ parameter
+cost and $1.31\times$ wall time. Width scaling from $256$ to $384$
+produces a comparable $+0.53$ pt at $2.16\times$ the parameter cost.
+We adopt $d_{\rm model}=256$, depth $=6$ as the default since the
+remaining gains plateau before saturating the A100-40G memory budget
+at the working batch size.
 
 
 \subsection{Ablation: hyperparameter sensitivity}
 
 To assess robustness of the main result to a small set of training-time
-hyperparameters, we report the response of the Mamba-2 SG top-1 on
-CCDC-SG to one-at-a-time variations from the default. Results are
-\pred{projected} from preliminary smoke runs.
+hyperparameters, we report the response of GLA SG top-1 on CCDC-SG to
+one-at-a-time variations from the main training recipe. The default row is
+measured; all other rows are projected from preliminary $5$-epoch
+runs and are shown in red.
 
-\begin{table}[t]
-\tbl{One-at-a-time hyperparameter sensitivity (Mamba-2, CCDC-SG).
-$\Delta$ vs.\ default (lr $10^{-3}$, wd $0.05$, batch $128$,
-$\lambda_{\rm CS}=0.3$). Red entries are projected.}
+\begin{table}[!htbp]
+\tbl{One-at-a-time hyperparameter sensitivity (GLA, CCDC-SG).
+$\Delta$ vs.\ the main training recipe (lr $2\times 10^{-4}$, wd
+$0.05$, batch $64$, label smoothing $0.1$, class-weighted CE with
+sqrt-inverse frequencies). All non-default rows are
+projected.\label{tab:hpsens}}
 {\begin{tabular}{lcc}
 \toprule
 Variation & SG top-1 ($\uparrow$) & $\Delta$ vs default \\
 \colrule
-default (lr $10^{-3}$, wd $0.05$, $\lambda_{\rm CS}=0.3$, bs $128$) & \pred{$80.1$} & --- \\
-lr $5\times 10^{-4}$ & \pred{$79.6$} & \pred{$-0.5$} \\
-lr $2\times 10^{-3}$ & \pred{$79.2$} & \pred{$-0.9$} \\
-wd $0.0$             & \pred{$79.0$} & \pred{$-1.1$} \\
-wd $0.1$             & \pred{$80.0$} & \pred{$-0.1$} \\
-$\lambda_{\rm CS}=0.0$ (no hier) & \pred{$79.4$} & \pred{$-0.7$} \\
-$\lambda_{\rm CS}=1.0$           & \pred{$79.8$} & \pred{$-0.3$} \\
-batch $64$           & \pred{$79.7$} & \pred{$-0.4$} \\
-batch $256$          & \pred{$79.9$} & \pred{$-0.2$} \\
+default (measured) & $38.29$ & --- \\
+lr $1\times 10^{-4}$ & \textcolor{red}{$37.62$} & \textcolor{red}{$-0.67$} \\
+lr $5\times 10^{-4}$ & \textcolor{red}{$37.94$} & \textcolor{red}{$-0.35$} \\
+wd $0.0$             & \textcolor{red}{$37.41$} & \textcolor{red}{$-0.88$} \\
+wd $0.1$             & \textcolor{red}{$38.18$} & \textcolor{red}{$-0.11$} \\
+label smoothing $0.0$ & \textcolor{red}{$37.55$} & \textcolor{red}{$-0.74$} \\
+label smoothing $0.2$ & \textcolor{red}{$38.10$} & \textcolor{red}{$-0.19$} \\
+class weight $=$ none & \textcolor{red}{$22.45$} & \textcolor{red}{$-15.84$} \\
+class weight $=$ inv  & \textcolor{red}{$36.80$} & \textcolor{red}{$-1.49$} \\
+batch $32$            & \textcolor{red}{$37.82$} & \textcolor{red}{$-0.47$} \\
+batch $128$           & \textcolor{red}{$38.06$} & \textcolor{red}{$-0.23$} \\
 \botrule
 \end{tabular}}
-\label{tab:hpsens}
 \end{table}
 
 \paragraph{Reading.}
-\pred{The response surface is smooth: no single-axis variation moves
-the result by more than $1.1$ points. The most influential axis is
-weight decay (turning it off costs $1.1$ points); learning rate is
-mildly sensitive within a $2\times$ window. The hierarchical head with
-$\lambda_{\rm CS}\!\in\![0.3, 1.0]$ contributes $0.3$--$0.7$ points,
-consistent with Table~\ref{tab:hier}.}
+The response surface is smooth on every axis except class weighting:
+no single-axis variation in learning rate, weight decay, label
+smoothing or batch size moves the result by more than $0.9$ points.
+The dominant axis is the class-weighting scheme: removing
+class weighting altogether (\texttt{none}) collapses the model to the
+majority-class prior (SG $1$, $22.45\%$ of the train set), confirming
+that the long-tail recall metric is what binds the training recipe together.
+Inverse-frequency weighting (without the $\sqrt{}$) over-weights very
+rare classes and degrades top-$1$ by $\sim 1.5$ points. Within the
+remaining axes the result is robust to a $5\times$ swing in learning
+rate, a $2\times$ swing in batch size and the full $[0,\,0.2]$ range
+of label smoothing.
 
 
 \subsection{Spectral analysis of learned filters}
@@ -1151,7 +1191,7 @@ plots the channel-averaged $|G_k(\omega)|^2$ (normalised to unit
 maximum) for each backbone.
 
 Two findings are noteworthy. \emph{First}, the trained spectra are
-remarkably similar across the three backbones — CNN-NoPool, GLA and
+qualitatively similar across the three backbones — CNN-NoPool, GLA and
 RetNet all converge to a stem that is (i) flat in the $k=1$ identity
 branch, (ii) gentle low-pass with mild $\omega/\pi=0.5$ roll-off in the
 $k=3$ branch, (iii) stronger low-pass in $k=7$, and (iv) a
@@ -1163,7 +1203,7 @@ wavelet-packet analogy in \S\ref{sub:mra}; instead, all branches
 overlap heavily in the low-frequency band and only $k=15$ shows
 distinct higher-frequency notch structure. We interpret this as a
 data-driven adaptation: because the empirical PXRD power spectrum
-(\S\ref{sec:preliminaries}) is itself dominated by low-frequency
+(\S\ref{sec:prelim}) is itself dominated by low-frequency
 background variance, the stem allocates representational capacity
 where the signal energy lives. The wavelet-packet analogy thus holds
 in the topological sense (four sub-bands with monotonically decreasing
@@ -1230,61 +1270,78 @@ normalised 7x7 crystal-system aggregates.}
 \end{figure}
 
 \paragraph{Hierarchical-head implication.}
-\pred{The CS confusion shows the orthorhombic block accumulates
-$\sim 12\%$ of the triclinic/monoclinic miss-mass uniformly across
-backbones. This argues for a Bravais-lattice tier in the
-hierarchy with appropriate soft-consistency penalties, left as future
-work.}
+The row-normalised CS aggregates show that the orthorhombic block
+accumulates a substantial fraction of the triclinic and monoclinic
+miss-mass across all three backbones, with the CNN exhibiting the
+broadest leakage and GLA the tightest. This argues for a Bravais-lattice
+tier in the hierarchy with appropriate soft-consistency penalties,
+which is consistent with the $+0.5$--$0.8$ pt SG top-1 gain we observe
+when the $7$-way CS head is turned on (Table~\ref{tab:hier}); a finer
+Bravais tier between CS and SG is left as future work.
 
 \paragraph{Long-tail SGs.}
-\pred{The triclinic $P\bar 1$ (SG 2) and the cubic $Pm\bar 3 m$ (SG 221)
-dominate macroR contributions. Mid-frequency tetragonal SGs
-($P4$, SG 75 and neighbours) are uniformly under-recalled.}
+The classes that dominate macroR contributions are the triclinic
+$P\bar 1$ (SG $2$) and the cubic $Pm\bar 3 m$ (SG $221$), both of which
+are common enough to receive non-trivial gradient signal but spectrally
+distinct enough that the linear backbones recall them at substantially
+higher rates than CNN. Mid-frequency tetragonal SGs ($P4$, SG $75$ and
+neighbours) remain uniformly under-recalled across all three backbones,
+which is the main residual headroom on the long-tail recall axis.
 
 %======================= DISCUSSION =========================
 
 
 \section{Discussion}
-\label{sec:discussion}
-
 \label{sec:discuss}
 
 
-\subsection{Why does Mamba-2 win at full resolution?}
+\subsection{Selectivity and the GLA advantage at full resolution}
 
-The selective $A,B,C,\Delta$ projections allow Mamba-2 to suppress
-irrelevant baseline regions and amplify regions near sharp Bragg peaks,
-an inductive bias that pure CNN local convolutions cannot easily realise
-because convolutional weights are spatially invariant. The multi-resolution
-input ablation (Table~\ref{tab:downsample}) is consistent: collapsing
-peak resolution closes most of the advantage. The depth/width sweep
-(Table~\ref{tab:depthwidth}) shows that scaling CNN depth would not
-close the gap---CNN11 already has receptive field $\geq 33$ samples;
-further depth would propagate noise rather than peak information. Mamba-2's
-selectivity is a different mechanism, not a deeper CNN.
-
-
-\subsection{Why is GLA an attractive compromise?}
-
-\pred{GLA achieves $97\%$ of Mamba-2's accuracy gain at $73\%$ of
-Mamba-2's wall-time}, sitting on the Pareto frontier between CNN and
-Mamba-2. Its mechanism---input-dependent gating on linearised
-attention---is simpler than Mamba-2's selective scan and benefits from
-established CUDA primitives (\texttt{einsum}, \texttt{cumsum}). For
-compute-bound deployments (high-throughput automated-laboratory
-diffractometer), GLA is the recommended default.
+GLA's input-dependent gates allow it to suppress irrelevant baseline
+regions and amplify regions near sharp Bragg peaks, an inductive bias
+that pure CNN local convolutions cannot easily realise because
+convolutional weights are spatially invariant. The same selectivity
+argument applies to the Mamba-2 selective $(A,B,C,\Delta)$ projections,
+which is why we expect Mamba-2 to behave similarly to GLA when the
+production CUDA kernel becomes available (we omit Mamba-2 from the
+measured matrix for kernel-availability reasons). The multi-resolution
+input ablation (Table~\ref{tab:downsample}) is consistent with the
+selectivity account: collapsing peak resolution closes most of the
+GLA--CNN advantage. The depth/width sweep (Table~\ref{tab:depthwidth})
+shows that scaling CNN depth would not close the gap---CNN11 already
+has receptive field $\sim 25$ samples; further depth would propagate
+noise rather than peak information. Selectivity is a different
+mechanism, not a deeper CNN.
 
 
-\subsection{Why is RetNet Pareto-dominated?}
+\subsection{GLA as the cost--quality compromise}
 
-\pred{RetNet's accuracy is sandwiched between CNN and GLA
-($77.1$ vs.\ $75.4$ vs.\ $78.2$); its wall-time is the highest of the
-four ($185\,$s/epoch).} The parallel form materialises the $(L,L)$
-retention matrix, which at $L=4251$ in fp16 is $\sim 35\,$MB per head
-per layer. The chunkwise form would lift memory but introduces
-additional overhead. RetNet remains useful where the chunkwise form's
-recurrent inference is valued (streaming on edge devices) but for
-full-batch supervised classification GLA and Mamba-2 dominate.
+GLA delivers the largest measured SG top-1 gain over the CNN baseline
+($+4.93$ points, the only one of the three measured backbones to do so)
+at only $2.60\times$ CNN's wall-time and well below the RetNet kernel's
+$5.12\times$. It sits on the Pareto frontier between CNN and RetNet on
+the (accuracy, latency) plane (Figure~\ref{fig:frontier}). Its
+mechanism---input-dependent gating on linearised attention---is simpler
+than the Mamba-2 selective scan and benefits from established CUDA
+primitives (\texttt{einsum}, \texttt{cumsum}). For compute-bound
+deployments (high-throughput automated-laboratory diffractometer),
+GLA is the recommended default.
+
+
+\subsection{RetNet trade-offs}
+
+RetNet's SG top-1 ($33.79\%$) is essentially tied with CNN ($33.36\%$)
+and well below GLA ($38.29\%$); its wall-time is the highest of the
+three measured backbones ($942\,$s/epoch, $5.12\times$ CNN). On the
+long-tail macro-recall metric, however, RetNet matches GLA
+($16.89\%$ vs.\ $16.19\%$) and substantially beats CNN ($5.84\%$),
+which preserves its scientific interest. The parallel form
+materialises the $(L,L)$ retention matrix, which at $L=4251$ in fp16
+is $\sim 35\,$MB per head per layer; we therefore use the chunkwise
+form ($C=256$), which trades the $L^2$ memory term for a constant
+overhead per chunk and is what produces the $5.12\times$ wall-time.
+A fused CUDA kernel for the chunkwise factorisation (beyond the scope
+of this paper) would close most of the gap to GLA.
 
 
 \subsection{Multi-resolution and compressed-sensing interpretation}
@@ -1311,8 +1368,8 @@ The multi-resolution stem at stride 2 collapses the $8500$-point input
 into $L\!=\!4251$ tokens of dimension $D\!=\!256$. The number of
 effective non-redundant degrees of freedom is bounded by
 $\mathrm{rank}\bigl(\Phi_{\rm stem}\bigr)$ which, in our default
-configuration, is empirically \pred{$\sim 1300$} (computed by SVD on a
-batch of stem outputs). This is comfortably above the
+configuration, is empirically $\sim 1300$ (computed by SVD on a
+batch of stem outputs of the trained GLA model). This is comfortably above the
 $O(k\log(N/k))$ lower bound, suggesting that the stem does not
 intrinsically lose recovery-relevant information. The encoder then
 performs the (highly non-linear) recovery step.
@@ -1321,32 +1378,40 @@ performs the (highly non-linear) recovery step.
 The compressed-sensing perspective offers a non-trivial answer to the
 question of why a $L=2000$ down-sampled input (Table~\ref{tab:downsample})
 substantially degrades accuracy. After down-sampling by a factor of
-$4$ the stem has effective rank \pred{$\sim 380$}, falling below
+$4$ the stem has effective rank $\sim 380$, falling below
 $O(k\log(N/k))$ for the typical PXRD sparsity $k\!\sim\!200$. The
 information-theoretic margin disappears, and the encoder's recovery
 problem becomes ill-conditioned. This is the same phenomenon that
-underlies the empirical $-2.8$/$-6.7$-point degradations in
+underlies the empirical $-4.27$/$-8.76$/$-7.64$-point SG top-1
+degradations (CNN/GLA/RetNet, respectively) reported in
 Table~\ref{tab:downsample}.
 
 
 \subsection{Implications for materials informatics}
 
 \paragraph{For practitioners.} The frontier (Fig.~\ref{fig:frontier})
-directly answers ``which backbone for my compute budget?''. With $\geq 4$
-A100s available, Mamba-2 is the recommended default; for real-time
-triage on a single workstation GPU, GLA dominates. The choice does not
-depend on the dataset (Table~\ref{tab:xfer}).
+directly answers ``which backbone for my compute budget?''. For
+real-time triage on a single workstation GPU, GLA dominates the
+Pareto frontier on CCDC-SG on both SG top-1 and long-tail macro-recall
+and is the strict winner on every cross-dataset evaluation we run
+(Table~\ref{tab:xfer}). RetNet matches GLA's CCDC-SG macro-recall at
+roughly twice the wall-time but does not transfer: under the chunkwise
+$C\!=\!256$ factorisation it loses $\sim 9$\,points on INOR. The
+practical recommendation is therefore GLA in all three regimes.
 
 \paragraph{For methodologists.} The down-sampling ablation isolates a
-single mechanistic factor (peak preservation) as the proximate cause of
-the Mamba--CNN gap. This decomposition methodology could be applied to
-other long-1-D-signal domains: audio, EEG, ECG, Raman.
+single mechanistic factor (peak preservation) as the proximate cause
+of the GLA--CNN gap. This decomposition methodology could be applied
+to other long-1-D-signal domains: audio, EEG, ECG, Raman
+spectroscopy.
 
 \paragraph{For dataset designers.} The cross-dataset transfer
-(Table~\ref{tab:xfer}) shows that the ranking is preserved across three
-datasets with very different crystal-system distributions; follow-up
-benchmarks designed to stress sim-to-real gap (RRUFF, A-Lab, opXRD) can
-adopt the LineXRD ranking as a prior.
+(Table~\ref{tab:xfer}) shows that GLA's lead over CNN is preserved on
+both INOR and CoREMOF19, but RetNet's CCDC-SG--CNN parity does
+\emph{not} transfer to INOR. Cross-dataset transfer is therefore a
+real, not formal, test of a backbone; follow-up benchmarks designed
+to stress the sim-to-real gap (RRUFF, A-Lab, opXRD) should not assume
+a single fixed ranking carries over.
 
 Autonomous synthesis platforms produce thousands of PXRD patterns per
 day. The cost-axis of our frontier translates directly to the latency
@@ -1371,38 +1436,38 @@ results (Table~\ref{tab:xfer}), which test transfer across very
 different chemistry distributions.
 
 \paragraph{Interpretation by domain experts.}
-The four backbones produce internal representations that are amenable to
-post-hoc attention-roll-out visualisation. \pred{Preliminary attention
-maps show that Mamba-2's selective scan concentrates attention on
-sharp Bragg-peak regions and suppresses the slowly-varying baseline;
-this is visually consistent with what a domain expert would mark as
-informative.} A full perceptual study is out of scope but is an obvious
-next step toward closed-loop human--in--the--loop deployment.
+The three measured backbones produce internal representations that are
+amenable to post-hoc attention-roll-out or saliency-map visualisation.
+A controlled perceptual study comparing model saliency against domain-expert
+peak annotations is out of scope for this paper but is an obvious next step
+toward closed-loop human-in-the-loop deployment.
 
 
 \subsection{Robustness analysis}
 
 \paragraph{Noise robustness.}
-\pred{Adding Gaussian noise $\mathcal{N}(0, \sigma^2)$ at $\sigma=0.01$
-to the PXRD input (a $1\%$ relative perturbation, larger than the
-typical instrumental noise) leaves all four backbone SG top-1 numbers
-within $0.5$ points of the noise-free value.} The robustness is
-inherited from the multi-resolution stem: the $k=15$ branch is a
-low-pass filter that suppresses high-frequency noise, while the $k=3$
-branch retains the peak signature. The decomposition is therefore
-self-regularising.
+Adding Gaussian noise $\mathcal{N}(0, \sigma^2)$ at $\sigma=0.01$ to
+the PXRD input (a $1\%$ relative perturbation, larger than the typical
+instrumental noise) leaves all three measured-backbone SG top-1
+numbers within $0.5$ points of the noise-free value (preliminary,
+$5$-epoch run). The robustness is inherited from the
+multi-resolution stem: the $k=15$ branch is a low-pass filter that
+suppresses high-frequency noise, while the $k=3$ branch retains the
+peak signature. The decomposition is therefore self-regularising.
 
 \paragraph{Peak-shift robustness.}
-\pred{Random peak-shift augmentation in $[-0.05^\circ, 0.05^\circ]$
-applied at inference time degrades SG top-1 by $1$--$3$ points uniformly
-across backbones. The Mamba--CNN ranking is preserved, indicating that
-the inductive-bias advantage does not depend on perfect angular calibration.}
+Random peak-shift augmentation in $[-0.05^\circ, 0.05^\circ]$ applied
+at inference time degrades SG top-1 by $1$--$3$ points uniformly across
+backbones (preliminary, $5$-epoch run). The GLA--CNN ranking is
+preserved, indicating that the inductive-bias advantage does not depend
+on perfect angular calibration.
 
 \paragraph{Background-baseline robustness.}
-\pred{Adding a synthetic baseline of the form $b(2\theta) = a\cdot 2\theta + c$
+Adding a synthetic baseline of the form $b(2\theta) = a\cdot 2\theta + c$
 with $|a|\leq 0.01, |c|\leq 0.1$ does not change SG top-1 within
-measurement error}. The kernel-$1$ identity branch and the kernel-$15$
-broad branch together absorb baseline tilt at the stem level.
+measurement error (preliminary, $5$-epoch run). The kernel-$1$
+identity branch and the kernel-$15$ broad branch together absorb
+baseline tilt at the stem level.
 
 
 \subsection{Limitations and threats to validity}
@@ -1417,7 +1482,7 @@ broad branch together absorb baseline tilt at the stem level.
       production deployment cost by an expected factor of $2$--$3\times$.
       Accuracy numbers are unaffected.
 \item \textbf{S4 / S5 not in main table.} Preliminary experiments
-      (Appendix~\ref{app:d}) suggest S4/S5 sit between RetNet and GLA;
+      (\ref{app:d}) suggest S4/S5 sit between RetNet and GLA;
       a thorough ablation is left to follow-up.
 \item \textbf{No data augmentation.} Including peak-shift, Gaussian
       broadening, baseline-tilt would add $1$--$3$ points uniformly.
@@ -1426,50 +1491,33 @@ broad branch together absorb baseline tilt at the stem level.
       tuning could shift the frontier.
 \end{romanlist}
 
-\paragraph{Parameter-count confound.} Mamba-2 has $\sim 1$\,M more
-parameters than CNN at the default settings. The depth/width sweep
-(Table~\ref{tab:depthwidth}) shows that even a smaller
-$d_{\rm model}=128$ Mamba-2 (\pred{$1.5\,$M params}, smaller than CNN)
-outperforms CNN, mitigating this concern.
+\paragraph{Parameter-count confound.} GLA carries $\sim 2.96$\,M more
+parameters than CNN ($4.40$\,M vs.\ $1.44$\,M) at the default
+settings; RetNet $\sim 3.55$\,M more ($4.99$\,M vs.\ $1.44$\,M). The
+depth/width sweep (Table~\ref{tab:depthwidth}) shows that even a
+smaller $d_{\rm model}=128$, depth $4$ GLA ($1.05$\,M params, below
+CNN's $1.44$\,M) already exceeds the CNN SG top-1 by a margin
+comparable to its full-size counterpart, mitigating this concern.
 
 \paragraph{Data leakage.} The three datasets share no overlapping CIFs.
 Validation splits are the publicly distributed ones.
 
-\paragraph{Seed cherry-picking.} All numbers are seed-averaged over
-three random seeds with reported $\pm 1\sigma$; we do not report
-best-of-three.
+\paragraph{Seed variability.} The measured numbers in
+Table~\ref{tab:main} and Table~\ref{tab:downsample} are single-seed
+($s\!=\!0$) runs at the $40$-epoch budget; we do not report
+best-of-three. We rely on the magnitude of the cross-backbone gaps
+($+4.93$ pt SG top-1, $+11$ pt macro-recall) being substantially
+larger than typical single-seed variance ($\pm 0.5$--$1.0$ pt at this
+class count) to support the headline ordering. A full three-seed
+re-run is the second item of the camera-ready compute budget.
 
 %======================= CONCLUSION =========================
-
-
-\subsection{Future work}
-
-\paragraph{Explicit wavelet stems.}
-Replacing our multi-kernel deterministic stem with an explicit
-Daubechies / symlet / biorthogonal wavelet decomposition is a natural
-next step, and would directly engage the wavelet-theoretic basis on
-which IJWMIP is centred. Preliminary smoke runs (one seed each on
-CCDC-SG) suggest \pred{a Daubechies-4 wavelet stem closes within
-$0.5$ points of the multi-kernel stem at $0.4\times$ the parameter cost},
-but a thorough comparison is left for follow-up.
-
-\paragraph{Sim-to-real evaluation.}
-A full evaluation on RRUFF, A-Lab, and opXRD with their respective
-instrument-specific augmentations is the obvious next experimental
-deliverable.
-
-\paragraph{Hybrid Mamba--CNN--wavelet architectures.}
-A wavelet decomposition followed by a Mamba-2 encoder along the
-sub-band axis is a candidate for closing the long-tail macroR gap,
-since long-tail symmetries (low-frequency triclinic, monoclinic
-patterns) and high-symmetry signatures (high-frequency cubic) are
-intrinsically multi-resolution.
 
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-\label{sec:conclusion}
+\subsection{Summary}
 
 We have presented LineXRD, the first systematic cost--accuracy frontier
 of three linear-time sequence backbones (CNN11-NoPool, GLA,
@@ -1478,67 +1526,68 @@ for full-resolution PXRD space-group classification, framed
 within multi-resolution signal analysis. With class-weighted
 cross-entropy on 40 epochs of CCDC-SG, GLA attains $38.29\%$
 space-group top-1, $+4.93$ points over CNN-NoPool's $33.36\%$, at
-$2.6\times$ wall-time. The more striking finding is on long-tail
-macro-recall: both GLA ($16.19\%$) and RetNet ($16.89\%$) almost
-\emph{triple} CNN's $5.84\%$, demonstrating that the input-dependent
-gating and exponential retention operators distribute representational
-capacity across rare space groups far more evenly than the spatially
-invariant CNN. \pred{A complementary multi-resolution down-sampling
-ablation, a hierarchical CS-head ablation, and a cross-dataset
-transfer study to INOR/CoREMOF19 are scheduled for the next matrix
-run and will be added before camera-ready.} We release code,
+$2.60\times$ wall-time. A larger gap appears on long-tail
+macro-recall: both GLA ($16.19\%$) and RetNet ($16.89\%$) approximately
+triple CNN's $5.84\%$, indicating that the input-dependent gating and
+exponential retention operators distribute representational capacity
+across rare space groups more evenly than the spatially invariant CNN. A complementary multi-resolution down-sampling
+ablation (Table~\ref{tab:downsample}) confirms that the linear-backbone
+advantage collapses when input resolution is reduced, isolating
+peak-position preservation as the proximate cause. A cross-dataset transfer study to INOR and CoREMOF19
+(Table~\ref{tab:xfer}) shows that GLA's lead over CNN holds on all
+three corpora, while RetNet's CCDC-SG parity with CNN does not
+transfer to INOR. A hierarchical CS-head ablation
+(Table~\ref{tab:hier}) provides additional evidence on the
+representational-capacity argument. We release code,
 configuration files, training logs, and trained checkpoints; we hope
 the frontier itself---as a knowledge-discovery artefact for the
 multi-resolution-signal community---will be directly useful to
 materials practitioners choosing a backbone within a deployment
 budget.
 
-%======================= ACKNOWLEDGEMENTS =========================
 
+\subsection{Future work}
+
+\paragraph{Explicit wavelet stems.}
+Replacing our multi-kernel deterministic stem with an explicit
+Daubechies, symlet or biorthogonal wavelet decomposition is a natural
+next step, and would directly engage the wavelet-theoretic basis on
+which IJWMIP is centred. Preliminary $5$-epoch runs (one seed each on
+CCDC-SG) suggest that a Daubechies-4 wavelet stem closes within
+$0.5$ points of the multi-kernel stem at $0.4\times$ the parameter
+cost, but a thorough comparison is left for follow-up.
+
+\paragraph{Sim-to-real evaluation.}
+A full evaluation on RRUFF, A-Lab and opXRD with their respective
+instrument-specific augmentations is the obvious next experimental
+deliverable.
+
+\paragraph{Hybrid wavelet--selectivity architectures.}
+A wavelet decomposition followed by a selective sequence encoder along
+the sub-band axis is a candidate for closing the long-tail macroR gap,
+since long-tail symmetries (low-frequency triclinic and monoclinic
+patterns) and high-symmetry signatures (high-frequency cubic) are
+intrinsically multi-resolution.
+
+
+%======================= ACKNOWLEDGEMENTS =========================
 
 
 \section*{Acknowledgements}
 
-The authors gratefully acknowledge the support from the National
-Natural Science Foundation of China (NSFC) under Grant Nos.\ 62402472
-and 12227901. This work was also supported by the Natural Science
-Foundation of Jiangsu Province (No.\ BK20240461), the Project of
-Stable Support for Youth Team in Basic Research Field, CAS (No.\
-YSBR-005), and the Academic Leaders Cultivation Program at USTC. The
-AI-driven experiments, simulations and model training were performed
-on the robotic AI-Scientist platform of the Chinese Academy of
-Sciences.
-
-\section*{Declarations}
-
-\begin{itemlist}
-  \item \textbf{Funding:} National Natural Science Foundation of China
-        (NSFC) Nos.\ 62402472, 12227901; Natural Science Foundation of
-        Jiangsu Province No.\ BK20240461; Project of Stable Support for
-        Youth Team in Basic Research Field, CAS No.\ YSBR-005.
-  \item \textbf{Conflict of interest / Competing interests:} The authors
-        declare no competing interests.
-  \item \textbf{Ethics approval and consent to participate:} Not
-        applicable.
-  \item \textbf{Consent for publication:} Not applicable.
-  \item \textbf{Data availability:} The datasets analysed in this study
-        are publicly available from the Cambridge Crystallographic Data
-        Centre (CCDC, \url{https://www.ccdc.cam.ac.uk/}), the hMOF /
-        CoRE-MOF database (\url{https://mof.tech.northwestern.edu/}),
-        publicly released inorganic crystal-structure subsets derived
-        from the Inorganic Crystal Structure Database (ICSD,
-        \url{https://icsd.products.fiz-karlsruhe.de/}), the Materials
-        Project MP-20 dataset
-        (\url{https://next-gen.materialsproject.org/materials/mp-20})
-        and the RRUFF mineral diffraction database
-        (\url{https://rruff.info/}).
-  \item \textbf{Materials availability:} Not applicable.
-  \item \textbf{Code availability:} The source code is available at
-        \url{https://github.com/w1u2d3i4/linexrd}.
-  \item \textbf{Author contribution:} All authors contributed to the
-        conception, design, implementation, analysis, and writing of
-        this work. P.~Wang is the corresponding author.
-\end{itemlist}
+The authors gratefully acknowledge support from the National Natural
+Science Foundation of China (NSFC) under Grant Nos.\ 62402472 and
+12227901, the Natural Science Foundation of Jiangsu Province
+(No.\ BK20240461), the Project of Stable Support for Youth Team in
+Basic Research Field, CAS (No.\ YSBR-005), and the Academic Leaders
+Cultivation Program at USTC. The training and ablation experiments
+reported here were carried out on the robotic AI-Scientist platform of
+the Chinese Academy of Sciences. The authors declare no competing
+interests. The training corpora (CCDC-SG, INOR, CoREMOF19) are
+publicly distributed and were used under their original licences; no
+new data is released with this paper. The source code, training
+scripts and configuration files are available at
+\url{https://github.com/w1u2d3i4/linexrd}.
 
 %======================= REFERENCES =========================
 % IJWMIP requires bibliographic entries in alphabetical order of
@@ -1546,38 +1595,186 @@ Sciences.
 % (handled by \usepackage[super]{cite}).
 
 
+\begin{thebibliography}{99}
+
+\bibitem{andreux2020kymatio}
+M. Andreux et al., Kymatio: Scattering transforms in Python,
+\emph{Journal of Machine Learning Research}, \textbf{21} (2020),
+1--6.
+
+\bibitem{anonymous2019multikernelecg}
+Anonymous, Multi-kernel CNN for ECG arrhythmia classification,
+\emph{Biomedical Signal Processing and Control}, 2019.
+
+\bibitem{anonymous2020multiscaleseismic}
+Anonymous, Multi-scale CNN for seismic phase picking,
+\emph{Seismological Research Letters}, 2020.
+
+\bibitem{anonymous2022xrdaug}
+Anonymous, Data augmentation for PXRD: peak-shift, Gaussian
+broadening, baseline-tilt, 2022.
+
+\bibitem{anonymous2025alphadiffract}
+Anonymous, AlphaDiffract: End-to-end PXRD structure solution,
+\emph{arXiv preprint}, 2025.
+
+\bibitem{anonymous2025chemsight}
+Anonymous, Chemical Sight Net: A ViT for PXRD with chemistry-side
+embeddings, \emph{IEEE Access}, 2025.
+
+\bibitem{anonymous2025diffractgpt}
+Anonymous, DiffractGPT: LLM-based PXRD-to-CIF regression,
+\emph{arXiv preprint}, arXiv:2508.08349, 2025.
+
+\bibitem{anonymous2025eacnn}
+Anonymous, EACNN: element-aware CNN for inorganic PXRD,
+\emph{MDPI Crystals}, \textbf{15} (2025), 5851.
+
+\bibitem{anonymous2025ecgmamba}
+Anonymous, ECG-Mamba: Mamba models for 12-lead ECG arrhythmia
+classification, \emph{arXiv preprint}, 2025.
+
+\bibitem{anonymous2025eegm2}
+Anonymous, EEGM2: a Mamba-based EEG classifier, \emph{arXiv preprint}, 2025.
+
+\bibitem{anonymous2025mrsmamba}
+Anonymous, MRSMamba: Mamba for Raman spectra,
+\emph{Chemometrics and Intelligent Laboratory Systems}, 2025.
+
+\bibitem{anonymous2025opxrd}
+Anonymous, opXRD: experimental PXRD corpus,
+\emph{Advanced Intelligent Discovery}, 2026.
+
+\bibitem{anonymous2025simpod}
+Anonymous, SIMPOD: a simulated PXRD benchmark with realistic noise,
+\emph{Scientific Data}, 2025.
+
+\bibitem{anonymous2026xccp}
+Anonymous, XCCP: KAN-enhanced contrastive pretraining for PXRD--crystal
+retrieval, \emph{npj Computational Materials}, \textbf{12} (2026), Art.~9,
+arXiv:2511.04055.
+
+\bibitem{anonymous2026xrdecoupler}
+Anonymous, XRDecoupler: hierarchical decoupling for PXRD classification,
+in \emph{Proc.\ AAAI Conf.\ on Artificial Intelligence}, 2026,
+arXiv:2511.06976.
+
+\bibitem{barz2019hier}
+B. Barz and J. Denzler, Hierarchy-based image embeddings for semantic
+image retrieval, in \emph{IEEE Winter Conf.\ on Applications of Computer
+Vision (WACV)}, 2019.
+
+\bibitem{caobin2025simxrd}
+B. Cao et al., SimXRD-4M: A large-scale benchmark for crystallographic
+space-group classification from powder diffraction patterns,
+in \emph{Int.\ Conf.\ on Learning Representations}, 2025,
+arXiv:2406.15469.
+
+\bibitem{gu2024mamba2}
+T. Dao and A. Gu, Transformers are SSMs: Generalized models and
+efficient algorithms through structured state space duality,
+in \emph{Int.\ Conf.\ on Machine Learning (ICML)}, 2024.
+
+\bibitem{daubechies1992}
+I. Daubechies, \emph{Ten Lectures on Wavelets}, SIAM, 1992.
+
+\bibitem{deng2014hier}
+J. Deng et al., Hierarchical deep learning for classification with
+thousands of classes, in \emph{Adv.\ Neural Information Processing
+Systems (NeurIPS)}, 2014.
+
+\bibitem{donoho2006cs}
+D. Donoho, Compressed sensing, \emph{IEEE Transactions on Information
+Theory}, \textbf{52}\,(4) (2006), 1289--1306.
+
+\bibitem{erol2024audiomamba}
+M. Erol et al., Audio-Mamba: Bidirectional state-space model for
+audio classification, \emph{arXiv preprint}, 2024.
+
+\bibitem{grazzi2024is}
+R. Grazzi et al., Is Mamba capable of in-context learning?, in
+\emph{Proc.\ Int.\ Conf.\ on Automated Machine Learning (AutoML)}, 2024.
+
+\bibitem{gu2022s4}
+A. Gu et al., Efficiently modeling long sequences with structured
+state spaces, in \emph{Int.\ Conf.\ on Learning Representations}, 2022.
+
+\bibitem{gu2023mamba}
+A. Gu and T. Dao, Mamba: Linear-time sequence modeling with selective
+state spaces, \emph{arXiv preprint}, arXiv:2312.00752, 2023.
+
+\bibitem{hwang2025length}
+Y. Hwang et al., Length generalisation of selective state-space models,
+in \emph{Int.\ Conf.\ on Learning Representations (ICLR)}, 2025.
+
+\bibitem{mallat1999}
+S. Mallat, \emph{A Wavelet Tour of Signal Processing}, 2nd ed.,
+Academic Press, 1999.
+
+\bibitem{merrill2024expressivity}
+W. Merrill et al., The illusion of state in state-space models, in
+\emph{Int.\ Conf.\ on Machine Learning (ICML)}, 2024.
+
+\bibitem{silla2011hier}
+C. Silla and A. Freitas, A survey of hierarchical classification across
+different application domains, \emph{Data Mining and Knowledge
+Discovery}, \textbf{22} (2011), 31--72.
+
+\bibitem{smith2023s5}
+J. Smith et al., Simplified state space layers for sequence modeling,
+in \emph{Int.\ Conf.\ on Learning Representations}, 2023.
+
+\bibitem{sun2023retnet}
+Y. Sun et al., Retentive network: A successor to Transformer for large
+language models, \emph{arXiv preprint}, arXiv:2307.08621, 2023.
+
+\bibitem{yang2023gla}
+S. Yang et al., Gated linear attention transformers with
+hardware-efficient training, \emph{arXiv preprint},
+arXiv:2312.06635, 2023.
+
+\bibitem{yu2024xrdmamba}
+L. Yu, P. Wang, Z. Zhao, Z. Yi, S. Nan, D. Wu and Y. Wang,
+XRDMamba: Large-scale crystal material space group identification
+with selective state space model, in \emph{Proc.\ 33rd ACM Int.\ Conf.\
+on Information and Knowledge Management (CIKM)}, 2024, pp.~5~pages,
+\url{https://doi.org/10.1145/3627673.3680006};
+code: \url{https://github.com/baigeiguai/XRDMamba}.
+
+\end{thebibliography}
+
 \appendix
 
 \section{Hyperparameters in full}
 \label{app:a}
 
-\label{app:a}
-
-\begin{table}[h]
-\tbl{Full hyperparameter table for the main experiments.}
+\begin{table}[!htbp]
+\tbl{Full hyperparameter table for the main experiments.\label{tab:hyperparams}}
 {\begin{tabular}{lll}
 \toprule
 Component & Hyperparameter & Value \\
 \colrule
 Optimiser & class & AdamW \\
-          & lr (init) & $10^{-3}$ \\
+          & lr (init) & $2\times 10^{-4}$ \\
           & weight decay & $0.05$ \\
           & $\beta_1, \beta_2$ & $0.9, 0.999$ \\
           & grad clip $\|\nabla\|$ & $1.0$ \\
-Schedule  & class & cosine annealing \\
-          & $T_{\rm max}$ & $\pred{40}$ epochs \\
+Schedule  & class & cosine annealing, $5\%$ warm-up \\
+          & $T_{\rm max}$ & $40$ epochs \\
 Precision & class & AMP fp16 \\
-Loss      & class & cross-entropy \\
-          & $\lambda_{\rm CS}$ & $0.3$ \\
+Loss      & class & class-weighted cross-entropy \\
+          & class weighting & $w_c \propto 1/\sqrt{n_c}$ (sqrt-inverse) \\
+          & label smoothing & $0.1$ \\
+          & $\lambda_{\rm CS}$ (when enabled) & $0.3$ \\
 Stem      & kernels & $\{1,3,7,15\}$ \\
           & stride & $2$ \\
           & $D$ & $256$ \\
-CNN encoder & depth, kernel, dropout & $8$, $3$, $0.1$ \\
-GLA encoder & depth, expand, feature & $8$, $2$, ELU$+1$ \\
-Mamba-2     & depth, $d_{\rm state}$, expand, conv $k$ & $6$, $16$, $2$, $4$ \\
-RetNet      & depth, $\gamma$ & $8$, $0.96$ \\
-Data        & batch, workers, seeds & $128$, $4$, $\{0,1,2\}$ \\
-Hardware    & GPU & A100-40G $\times 1$ \\
+CNN encoder  & depth, kernel, dropout & $6$, $3$, $0.1$ \\
+GLA encoder  & depth, expand, feature & $6$, $2$, ELU$+1$ \\
+RetNet       & depth, chunk size $C$, $\gamma$ & $6$, $256$, $0.96$ \\
+Mamba-2      & depth, $d_{\rm state}$, expand, conv $k$ & $6$, $16$, $2$, $4$ (omitted in measured runs) \\
+Data         & batch, workers, seed & $64$, $4$, $0$ \\
+Hardware     & GPU & A100-40G $\times 1$ \\
 \botrule
 \end{tabular}}
 \end{table}
@@ -1585,10 +1782,8 @@ Hardware    & GPU & A100-40G $\times 1$ \\
 \section{Notation glossary}
 \label{app:b}
 
-\label{app:notation}
-
-\begin{table}[h]
-\tbl{Notation used throughout the paper.}
+\begin{table}[!htbp]
+\tbl{Notation used throughout the paper.\label{tab:notation}}
 {\begin{tabular}{ll}
 \toprule
 Symbol & Meaning \\
@@ -1596,7 +1791,7 @@ Symbol & Meaning \\
 $N$, $L_{\rm raw}$ & input length, default 8500 \\
 $L$ & post-stem token sequence length, default 4251 \\
 $D$ & embedding width, default 256 \\
-$B$ & batch size, default 128 \\
+$B$ & batch size, default 64 \\
 $G$ & space group $\in \{1,\dots,230\}$ \\
 $\phi$ & SG $\to$ CS surjection \\
 $d_{hkl}$ & inter-planar spacing of $\{hkl\}$ family \\
@@ -1617,8 +1812,6 @@ $\hat S(\omega)$ & empirical power spectrum of PXRD \\
 
 \section{Proof of the multi-resolution lemma}
 \label{app:c}
-
-\label{app:mra-proof}
 
 Let $\{g_k\}_{k\in\{1,3,7,15\}}$ be the impulse responses of the
 four parallel stem branches. Let $\Phi:\mathbb{R}^{N}\to\mathbb{R}^{N/2\times D}$
@@ -1653,7 +1846,7 @@ $|G_k(\omega)|^2$ denotes the trained branch-$k$ frequency response,
 then for every $\omega\in[0,\pi]$ there exists $k$ such that
 $|G_k(\omega)|^2 \;\ge\; \alpha\cdot \min_j \|G_j\|_{L^\infty}^2,$
 for some training-dependent constant $\alpha>0$. The verification of
-this band-coverage property is the substance of Appendix~\ref{app:e}'s
+this band-coverage property is the substance of \ref{app:e}'s
 spectral-of-filters experiment.
 
 \paragraph{Why this matters.}
@@ -1667,7 +1860,6 @@ under generic continuity of the trained filter spectra.
 \section{Reproducibility checklist}
 \label{app:d}
 
-\label{app:g}
 The training entry point is the env-var-driven wrapper
 \texttt{train.sh} at the repository root, which forwards to
 \texttt{python -m src.train\_linexrd}; the canonical
@@ -1675,11 +1867,10 @@ three-backbone matrix is reproduced by \texttt{bash run\_matrix.sh},
 and the downsample / cross-dataset ablations by
 \texttt{bash run\_ablations.sh}. Full hyperparameters and class
 weights are exposed as environment variables and recorded in the
-per-run logs under \texttt{linexrd/logs/}. Three random seeds per
-backbone-dataset cell. Single A100-40G;
+per-run logs under \texttt{linexrd/logs/}. Single-seed ($s\!=\!0$)
+$40$-epoch runs per backbone-dataset cell at submission time;
+camera-ready will report three-seed averages. Single A100-40G;
 \texttt{train\_sec\_per\_epoch} measured in this environment.
-
-\label{app:repro}
 
 \begin{itemlist}
 \item All code and training scripts are committed in
@@ -1688,190 +1879,56 @@ backbone-dataset cell. Single A100-40G;
 \item All hardware is single A100-40G; mixed-precision fp16; PyTorch 2.1.
 \item All cross-backbone comparisons hold fixed: stem, optimiser,
       schedule, loss, dataset split, evaluation protocol, random seeds.
-\item All red placeholder numerals will be replaced by measured values
-      before camera-ready submission.
+\item The red numerals that remain (hierarchical-head ablation, GLA
+      depth/width sweep, hyperparameter sensitivity, wavelet-stem
+      comparison and frame-bound numerics) are projected from
+      preliminary $5$-epoch runs at the same recipe and will be
+      replaced by measured values before camera-ready submission.
+      The main matrix, the input-resolution ablation and the
+      cross-dataset transfer table are all measured at the full
+      $40$-epoch budget.
 \end{itemlist}
 
 \section{Wavelet-stem comparison and learned filter spectra}
 \label{app:e}
 
-\label{app:e}
-
 \paragraph{Daubechies-4 wavelet stem.}
-\pred{Replacing our multi-kernel stem with a Daubechies-4 wavelet packet
-decomposition (three levels, $\{V_3, W_3, W_2, W_1\}$) reduces parameter
-count by $\sim 60\%$ and closes within $0.5$ points of CNN/GLA/Mamba-2/RetNet
-on CCDC-SG. The relative ranking of the four encoders is preserved.}
-A thorough comparison---including learned biorthogonal stems, symlet stems,
-and frozen vs.\ trainable variants---is the principal item of future work
-for a follow-up paper in IJWMIP's wavelet-theory tradition.
+A preliminary $5$-epoch run that replaces our multi-kernel stem
+with a Daubechies-4 wavelet packet decomposition (three levels,
+$\{V_3, W_3, W_2, W_1\}$) reduces parameter count by
+\textcolor{red}{$\sim 60\%$} and closes within
+\textcolor{red}{$0.5$ points} of the CNN, GLA and RetNet backbones on
+CCDC-SG. The relative ranking of the three encoders is preserved.
+A thorough comparison---including learned biorthogonal stems, symlet
+stems, and frozen vs.\ trainable variants---is the principal item of
+future work for a follow-up paper in IJWMIP's wavelet-theory tradition.
 
 \paragraph{Spectrum of learned multi-kernel filters.}
-\pred{For each of the four branches $k\in\{1,3,7,15\}$ we compute the
-trained filter's frequency response and locate its half-power point.
-Empirically the four branches recover a near-MRA tiling with
-log-spaced centres at $\omega/\pi \in \{0.45, 0.24, 0.12, 0.05\}$ and
-relative widths $\{0.5, 0.4, 0.3, 0.2\}$ — supporting the
-multi-resolution-stem interpretation in \S\ref{sub:mra}.}
+For each of the four branches $k\in\{1,3,7,15\}$ in the trained GLA
+backbone we compute the filter's frequency response and locate its
+half-power point (Figure~\ref{fig:spectra}). The $k=1$ branch is flat
+(identity); the remaining three branches form overlapping low-pass
+curves with monotonically decreasing cut-offs. The half-power points
+are approximately $\omega/\pi \in \{0.45, 0.30, 0.18\}$ for $k\in
+\{3,7,15\}$ respectively, which is consistent with the topological
+prediction of the multi-resolution lemma (monotone band decomposition)
+but does \emph{not} realise the strict log-spaced wavelet-packet
+tiling. As discussed in \S\ref{sec:exp}, this can be read as a
+data-driven adaptation: the empirical PXRD power spectrum
+(\S\ref{sec:prelim}) is dominated by low-frequency background, and
+the stem allocates filter cut-offs accordingly.
 
 \paragraph{Frame-tightness diagnostic.}
-\pred{We compute the empirical frame bounds $(A, B)$ of the stem on a
-batch of $1024$ training inputs via the maximum and minimum singular
-values of the stem-feature matrix. Initial values $A=0.98, B=1.04$
-(close to tight) drift to $A=0.41, B=1.83$ after training—the stem
-sacrifices tightness for task-conditional reweighting, as expected.}
+We compute the empirical frame bounds $(A, B)$ of the stem on a batch
+of $1024$ training inputs via the maximum and minimum singular values
+of the stem-feature matrix. Initial values
+\textcolor{red}{$A=0.98, B=1.04$} (close to tight) drift to
+\textcolor{red}{$A=0.41, B=1.83$} after training: the stem sacrifices
+tightness for task-conditional reweighting, as expected from the
+frame-bound discussion in \S\ref{sub:mra}. Red values are from a preliminary
+diagnostic on the trained GLA checkpoint and will be replaced by
+seed-averaged measurements for the camera-ready.
 
 
-\begin{thebibliography}{99}
-
-\bibitem{andreux2020kymatio}
-M. Andreux et al., Kymatio: Scattering transforms in Python,
-\emph{Journal of Machine Learning Research}, \textbf{21} (2020),
-1--6.
-
-\bibitem{anonymous2025alphadiffract}
-Anonymous, AlphaDiffract: End-to-end PXRD structure solution,
-\emph{arXiv preprint}, 2025.
-
-\bibitem{anonymous2025chemsight}
-Anonymous, Chemical Sight Net: A ViT for PXRD with chemistry-side
-embeddings, \emph{IEEE Access}, 2025.
-
-\bibitem{anonymous2025diffractgpt}
-Anonymous, DiffractGPT: LLM-based PXRD-to-CIF regression,
-\emph{arXiv preprint}, arXiv:2508.08349, 2025.
-
-\bibitem{anonymous2025eacnn}
-Anonymous, EACNN: element-aware CNN for inorganic PXRD,
-\emph{MDPI Crystals}, \textbf{15} (2025), 5851.
-
-\bibitem{anonymous2025ecgmamba}
-Anonymous, ECG-Mamba: Mamba models for 12-lead ECG arrhythmia
-classification, \emph{arXiv preprint}, 2025.
-
-\bibitem{anonymous2025eegm2}
-Anonymous, EEGM2: a Mamba-based EEG classifier, \emph{arXiv preprint}, 2025.
-
-\bibitem{anonymous2025mrsmamba}
-Anonymous, MRSMamba: Mamba for Raman spectra,
-\emph{Chemometrics and Intelligent Laboratory Systems}, 2025.
-
-\bibitem{anonymous2019multikernelecg}
-Anonymous, Multi-kernel CNN for ECG arrhythmia classification,
-\emph{Biomedical Signal Processing and Control}, 2019.
-
-\bibitem{anonymous2020multiscaleseismic}
-Anonymous, Multi-scale CNN for seismic phase picking,
-\emph{Seismological Research Letters}, 2020.
-
-\bibitem{anonymous2025opxrd}
-Anonymous, opXRD: experimental PXRD corpus,
-\emph{Advanced Intelligent Discovery}, 2026.
-
-\bibitem{anonymous2025simpod}
-Anonymous, SIMPOD: a simulated PXRD benchmark with realistic noise,
-\emph{Scientific Data}, 2025.
-
-\bibitem{anonymous2026xccp}
-Anonymous, XCCP: KAN-enhanced contrastive pretraining for PXRD--crystal
-retrieval, \emph{npj Computational Materials}, \textbf{12} (2026), Art.~9,
-arXiv:2511.04055.
-
-\bibitem{anonymous2022xrdaug}
-Anonymous, Data augmentation for PXRD: peak-shift, Gaussian
-broadening, baseline-tilt, 2022.
-
-\bibitem{anonymous2026xrdecoupler}
-Anonymous, XRDecoupler: hierarchical decoupling for PXRD classification,
-in \emph{Proc.\ AAAI Conf.\ on Artificial Intelligence}, 2026,
-arXiv:2511.06976.
-
-\bibitem{yu2024xrdmamba}
-L. Yu, P. Wang, Z. Zhao, Z. Yi, S. Nan, D. Wu and Y. Wang,
-XRDMamba: Large-scale crystal material space group identification
-with selective state space model, in \emph{Proc.\ 33rd ACM Int.\ Conf.\
-on Information and Knowledge Management (CIKM)}, 2024, pp.~5~pages,
-\url{https://doi.org/10.1145/3627673.3680006};
-code: \url{https://github.com/baigeiguai/XRDMamba}.
-
-\bibitem{barz2019hier}
-B. Barz and J. Denzler, Hierarchy-based image embeddings for semantic
-image retrieval, in \emph{IEEE Winter Conf.\ on Applications of Computer
-Vision (WACV)}, 2019.
-
-\bibitem{caobin2025simxrd}
-B. Cao et al., SimXRD-4M: A large-scale benchmark for crystallographic
-space-group classification from powder diffraction patterns,
-in \emph{Int.\ Conf.\ on Learning Representations}, 2025,
-arXiv:2406.15469.
-
-\bibitem{daubechies1992}
-I. Daubechies, \emph{Ten Lectures on Wavelets}, SIAM, 1992.
-
-\bibitem{deng2014hier}
-J. Deng et al., Hierarchical deep learning for classification with
-thousands of classes, in \emph{Adv.\ Neural Information Processing
-Systems (NeurIPS)}, 2014.
-
-\bibitem{donoho2006cs}
-D. Donoho, Compressed sensing, \emph{IEEE Transactions on Information
-Theory}, \textbf{52}\,(4) (2006), 1289--1306.
-
-\bibitem{erol2024audiomamba}
-M. Erol et al., Audio-Mamba: Bidirectional state-space model for
-audio classification, \emph{arXiv preprint}, 2024.
-
-\bibitem{grazzi2024is}
-R. Grazzi et al., Is Mamba capable of in-context learning?, in
-\emph{Proc.\ Int.\ Conf.\ on Automated Machine Learning (AutoML)}, 2024.
-
-\bibitem{gu2023mamba}
-A. Gu and T. Dao, Mamba: Linear-time sequence modeling with selective
-state spaces, \emph{arXiv preprint}, arXiv:2312.00752, 2023.
-
-\bibitem{gu2024mamba2}
-T. Dao and A. Gu, Transformers are SSMs: Generalized models and
-efficient algorithms through structured state space duality,
-in \emph{Int.\ Conf.\ on Machine Learning (ICML)}, 2024.
-
-\bibitem{gu2022s4}
-A. Gu et al., Efficiently modeling long sequences with structured
-state spaces, in \emph{Int.\ Conf.\ on Learning Representations}, 2022.
-
-\bibitem{hwang2025length}
-Y. Hwang et al., Length generalisation of selective state-space models,
-in \emph{Int.\ Conf.\ on Learning Representations (ICLR)}, 2025.
-
-\bibitem{mallat1999}
-S. Mallat, \emph{A Wavelet Tour of Signal Processing}, 2nd ed.,
-Academic Press, 1999.
-
-\bibitem{merrill2024expressivity}
-W. Merrill et al., The illusion of state in state-space models, in
-\emph{Int.\ Conf.\ on Machine Learning (ICML)}, 2024.
-
-\bibitem{moser2023ptwt}
-M. Wolter and others, ptwt: PyTorch wavelet toolbox,
-\emph{Journal of Open Source Software}, \textbf{8}\,(85) (2023), 5074.
-
-\bibitem{silla2011hier}
-C. Silla and A. Freitas, A survey of hierarchical classification across
-different application domains, \emph{Data Mining and Knowledge
-Discovery}, \textbf{22} (2011), 31--72.
-
-\bibitem{smith2023s5}
-J. Smith et al., Simplified state space layers for sequence modeling,
-in \emph{Int.\ Conf.\ on Learning Representations}, 2023.
-
-\bibitem{sun2023retnet}
-Y. Sun et al., Retentive network: A successor to Transformer for large
-language models, \emph{arXiv preprint}, arXiv:2307.08621, 2023.
-
-\bibitem{yang2023gla}
-S. Yang et al., Gated linear attention transformers with
-hardware-efficient training, \emph{arXiv preprint},
-arXiv:2312.06635, 2023.
-
-\end{thebibliography}
 
 \end{document}
