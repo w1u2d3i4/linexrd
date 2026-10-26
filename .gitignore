@@ -1,50 +1,9 @@
-## ============ training artefacts (big) ============
-checkpoints/
-logs/
-results/
-__pycache__/
-*.pyc
-*.pyo
-
-## ============ LaTeX compile artefacts ============
-paper/*.aux
-paper/*.log
-paper/*.out
-paper/*.toc
-paper/*.lof
-paper/*.lot
-paper/*.bbl
-paper/*.blg
-paper/*.synctex.gz
-paper/*.fdb_latexmk
-paper/*.fls
-
-## ============ backups & alt versions (not for release) ============
-paper/main.tex.bak_pre_reorg
-paper/main_kais_draft.tex
-paper/ws-ijwmip.cls.stub
-paper/ws_template/
-paper/overleaf_bundle/
-paper/overleaf_bundle.zip
-
-## ============ third-party templates we do not redistribute ============
-paper/ijwmip-2e/
-paper/sn-article.tex
-
-## ============ figure prompts (working notes) ============
-paper/figures/fig1_prompt.md
-paper/figures/fig1_data_snapshot.json
-paper/figures/fig1_caption.tex
-paper/figures/fig1_placeholder.pdf
-paper/figures/cs_population.txt
-
-## ============ misc ============
-.DS_Store
-.vscode/
-.claude/
-*.swp
-.nfs*
-texput.log
-paper/main.pdf
-paper/figs/*.png
-paper/figures/*.png
+# Source-only allowlist: data, logs, models, and all other artifacts are ignored.
+*
+!.gitignore
+!.gitattributes
+!README.md
+!pyproject.toml
+!src/
+!src/linexrd/
+!src/linexrd/*.py

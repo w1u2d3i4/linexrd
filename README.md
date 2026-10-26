@@ -1,111 +1,125 @@
 # LineXRD
 
-A multi-resolution linear-time sequence-model frontier for
-full-resolution powder X-ray diffraction (PXRD) space-group
-classification.
+Core code for sparse peak-set learning with verifiable scientific-record
+retrieval for PXRD space-group prediction.
 
-Code accompanying the manuscript *"LineXRD: A Multi-Resolution
-Linear-Time Sequence-Model Frontier for Full-Resolution Powder X-Ray
-Diffraction"* submitted to *International Journal of Wavelets,
-Multiresolution and Information Processing* (IJWMIP, World Scientific).
+This source-only repository contains the peak-set encoder, cosine retrieval,
+conditional expert fusion, an independent evidence verifier, and four local
+command-line entry points. Datasets, experimental results, logs, fitted models,
+checkpoints, and paper files are not distributed here.
 
-## Layout
+## Install
 
-```
-linexrd/
-├── src/
-│   ├── train_linexrd.py        # supervised training entry point
-│   ├── models/backbones.py     # CNN-NoPool / GLA / Mamba-2 / RetNet (chunkwise)
-│   └── data/loader.py          # CCDC-SG / INOR / CoREMOF19 NPY loader
-├── train.sh                    # env-var-driven training wrapper
-├── run_matrix.sh               # canonical 3-backbone 40-epoch matrix
-├── run_ablations.sh            # downsample + cross-dataset ablations
-└── paper/
-    ├── main.tex                # IJWMIP manuscript
-    ├── ws-ijwmip.{cls,bst}     # official World Scientific class + bibstyle
-    ├── figures/  figs/         # data + schematic figures
-    └── make_*.py               # figure-generation scripts (offline)
-```
-
-## Setup
+Use Python 3.10 or newer. Install the PyTorch build appropriate for your CPU or
+CUDA environment, then install this package from the repository root:
 
 ```bash
-# PyTorch 2.1+, CUDA 12, a single A100-40G is enough.
-pip install torch numpy matplotlib
+python -m pip install -e .
 ```
 
-The training data (CCDC-SG / INOR / CoREMOF19 `.npy` files) must be
-placed under a directory the loader can see. Adjust the `DATA_ROOT`
-constant at the top of `src/data/loader.py` to point at your local
-copy.
+All commands default to CPU; pass `--device cuda` to use an available GPU.
 
-## Training one backbone
+## Local input format
+
+Prepare your own NumPy `.npz` files outside the repository:
+
+- `features`: finite `float32` intensities with shape `(N, 8500)` on a common
+  angular grid. Apply the same preprocessing to training, reference, and query
+  patterns.
+- `labels`: integer space-group indices in `[0, 229]`, required for training,
+  validation, reference-bank construction, and calibration. Prediction does
+  not read query labels. Returned `space_group` values are one-based, `[1, 230]`.
+- Optional reference metadata: `record_id`, `entity_id`, and `source`, each a
+  length-`N` NumPy Unicode array. These fields are returned with retrieved rows.
+
+No data are downloaded automatically. Use entity-disjoint training, calibration,
+validation, and evaluation membership. Reference records must be selected
+according to your evaluation protocol; do not insert evaluation entities.
+
+## Basic workflow
+
+The paths below are placeholders for your own local files. Output directories
+are created when needed. Choose new output filenames; existing files are not
+overwritten by a new command.
+
+### 1. Train the peak-set encoder
 
 ```bash
-BACKBONE=gla DATASET=ccdc_sg EPOCHS=40 BATCH_SIZE=64 \
-  D_MODEL=256 DEPTH=6 LR=2e-4 bash train.sh
+python -m linexrd train --train /path/to/train.npz \
+  --validation /path/to/validation.npz --checkpoint artifacts/pst.pt
 ```
 
-Outputs:
+The default encoder uses 512 selected samples, 70 per-sample features, six
+256-dimensional Transformer blocks, and eight attention heads. Selection is a
+local-maximum-biased Top-K rule; adjacent samples can still be selected. The
+default uses raw intensities for the residual channel; cubic background
+subtraction is available with `--subtract-background`.
 
-- `checkpoints/<run>/best.pt`     — best validation checkpoint
-- `logs/<run>.log`                — full epoch curves and `METRIC` lines
+The compact trainer uses AdamW, class-weighted cross-entropy, label smoothing,
+gradient clipping, cosine scheduling, and validation checkpoint selection. It
+is a basic training entry point, not an experiment scheduler or an automated
+reproduction of all paper evaluation protocols.
 
-## Reproducing the v4 main matrix (40 epoch, class-weighted CE)
+### 2. Build a reference bank
 
 ```bash
-bash run_matrix.sh                 # CNN -> GLA -> RetNet, sequential
-bash run_ablations.sh              # Abl 1 (downsample) + Abl 3 (cross-dataset)
+python -m linexrd build-bank --checkpoint artifacts/pst.pt \
+  --data /path/to/reference_records.npz --output artifacts/bank.npz
 ```
 
-## Regenerating paper figures
+This saves normalized CLS embeddings, reference labels, and optional provenance.
+Use the same encoder checkpoint for bank construction, calibration, and queries.
+
+### 3. Fit fusion and verification on calibration examples
 
 ```bash
-cd paper
-python make_figs.py                            # Pareto / training curves / barchart
-python make_pxrd_spectrum.py                   # empirical PXRD power spectrum
-python make_confusion_and_filters.py           # confusion + learned filter spectra
+python -m linexrd calibrate --checkpoint artifacts/pst.pt \
+  --bank artifacts/bank.npz --data /path/to/calibration.npz \
+  --output artifacts/calibration.pkl --k 4 --temperature 0.03
 ```
 
-All scripts read measured metrics from `../logs/` and best checkpoints
-from `../checkpoints/` and emit PDFs into `paper/figs/` and
-`paper/figures/`.
+Fusion uses 13 posterior, agreement, and similarity statistics. Its tree is fit
+on clean calibration disagreements for which exactly one expert is correct.
+`--mapping hard|soft` controls expert selection or mixing;
+`--benefit-threshold off` disables the advantage guard. Tree depth and iteration
+count are exposed through `--tree-depth` and `--tree-iterations`.
 
-## Compiling the paper
+The separate relevance tree uses 16 statistics and is fit on clean evidence and
+query-mismatched, recomputed evidence generated in memory from calibration
+queries. Both checks must pass: recomputed similarities must agree within
+`1e-4`, and the relevance score must reach `--relevance-threshold`. Otherwise
+the original PST posterior is returned. Exactly the same verifier can wrap
+the kNN posterior using `linexrd.verification.apply`.
+
+This command fits one configuration. Select k, temperature, tree settings, and
+thresholds using development data, then keep them fixed for final evaluation.
+Calibration pickle files must be created locally or obtained from a trusted
+source. Keep the scikit-learn version consistent when saving and loading them.
+
+### 4. Predict
 
 ```bash
-cd paper
-pdflatex main.tex && pdflatex main.tex     # two passes for cross-refs
+python -m linexrd predict --checkpoint artifacts/pst.pt \
+  --bank artifacts/bank.npz --calibration artifacts/calibration.pkl \
+  --data /path/to/queries.npz --output artifacts/predictions.npz
 ```
 
-`ws-ijwmip.cls` is the official World Scientific IJWMIP class.
+For PST-only prediction, omit both `--bank` and `--calibration`. Retrieval outputs
+include class probabilities, acceptance flags, fusion weights, reference-row
+indices, cosine scores, and any supplied record metadata. Returned row indices
+refer to the bank file used for that invocation.
 
-## Headline results (CCDC-SG, 40 epoch, class-weighted CE, single seed)
+## Source layout
 
-| Backbone           | SG top-1     | macro-recall | params (M) | s/epoch |
-|--------------------|--------------|--------------|------------|---------|
-| CNN-NoPool         | 33.36 %      |  5.84 %      | 1.44       | 184     |
-| **GLA**            | **38.29 %**  | 16.19 %      | 4.40       | 478     |
-| RetNet (chunkwise) | 33.79 %      | **16.89 %**  | 4.99       | 942     |
+```text
+src/linexrd/
+  model.py          # Peak selection, angular/local features, PST encoder
+  fusion.py         # kNN voting and conditional expert tree
+  verification.py   # Score consistency, relevance, and PST fallback
+  runtime.py        # Local array I/O, embeddings, and cosine retrieval
+  cli.py            # Train, build-bank, calibrate, predict
+```
 
-GLA wins on top-1 (+4.93 pt over CNN). On the long-tail
-macro-recall metric, GLA and RetNet roughly *triple* the CNN
-baseline -- the most decisive empirical signature of this study.
-
-## Authors
-
-Di Wu, Mingyang Sun, **Pengkun Wang\***, Yang Wang  
-University of Science and Technology of China (Hefei / Suzhou)  
-Corresponding author: pengkun@ustc.edu.cn
-
-## Funding
-
-National Natural Science Foundation of China (NSFC) Nos. 62402472,
-12227901; Natural Science Foundation of Jiangsu Province No.
-BK20240461; Project of Stable Support for Youth Team in Basic Research
-Field, CAS No. YSBR-005; Academic Leaders Cultivation Program at USTC.
-
-## License
-
-Code released for academic use. See LICENSE file (to be added on
-publication).
+The repository uses a `.gitignore` allowlist that admits only source code and
+the dependency and documentation files. Keep datasets, generated arrays,
+training console captures, weights, and evaluation outputs outside Git.
